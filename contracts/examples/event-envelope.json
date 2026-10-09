@@ -1,0 +1,1 @@
+{"schema_version":"1.0.0","event_id":"evt-demo-0001","experience_id":"exp-demo-store","study_ids":["study-product-evaluation"],"session_id":"session-synthetic-0001","participant_id":null,"event_type":"interaction.click","occurred_at":"2026-01-01T10:00:00Z","payload":{"target_aoi_id":"aoi-product-card-1","x":240,"y":310}}

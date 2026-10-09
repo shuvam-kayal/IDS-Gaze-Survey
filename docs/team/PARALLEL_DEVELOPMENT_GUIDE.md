@@ -1,0 +1,3 @@
+# Parallel development guide
+
+Use short-lived `feat/p1-...`, `feat/p2-...`, `feat/p3-...`, `feat/p4-...` branches and open draft PRs early. Freeze schemas and examples before parallel implementation. P1 edits participant SDK/demo; P2 researcher/control plane; P3 telemetry/gaze/features; P4 analytics/models/results. Shared contracts, manifests, CI, Compose and migrations require integrator coordination. P3 starts with synthetic event fixtures; P4 starts immediately with synthetic FeatureRecords. Cross-boundary changes require affected-owner review. Never commit raw camera frames, secrets or identifiable participant data.
