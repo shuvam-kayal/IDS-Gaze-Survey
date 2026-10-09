@@ -1,5 +1,7 @@
 """P4-owned descriptive baseline. No production ML models are implemented yet."""
+
 from statistics import mean, median
+
 
 def describe(values: list[float]) -> dict[str, float | int | None]:
     if not values:
