@@ -1,0 +1,3 @@
+# Contract versioning
+
+Schemas live in `contracts/schemas/`; examples live in `contracts/examples/`. Every payload has `schema_version`; v1 starts at 1.0.0. Patch changes clarify without semantic changes; minor changes add optional fields with safe defaults; major changes remove/rename/change types or requiredness. Producers must not emit a new major version until consumers support it. Use UTC RFC 3339 timestamps, opaque IDs, explicit units (`_ms`, `_px`) and distinguish absent, null, zero and invalid. Schema changes require rationale, before/after examples, migration notes, schema validation and producer/consumer review. Never expose third-party gaze-engine objects in canonical contracts.
