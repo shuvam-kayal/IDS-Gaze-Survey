@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AOIConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experience_id",
+    "study_id",
+    "aoi_set_version",
+    "aois"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "experience_id": {
+      "type": "string"
+    },
+    "study_id": {
+      "type": "string"
+    },
+    "aoi_set_version": {
+      "type": "string"
+    },
+    "aois": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "aoi_id",
+          "label",
+          "selector",
+          "tracking_strategy"
+        ],
+        "properties": {
+          "aoi_id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "selector": {
+            "type": "string"
+          },
+          "tracking_strategy": {
+            "enum": [
+              "css_selector",
+              "data_attribute",
+              "manual_fallback"
+            ]
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}
