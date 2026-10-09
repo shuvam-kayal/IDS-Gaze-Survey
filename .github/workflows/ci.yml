@@ -13,7 +13,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: pip
       - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: pytest --cov=services --cov-report=term-missing
@@ -24,6 +23,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
-      - run: npm install
+      - run: npm install --no-audit --no-fund
       - run: npm run typecheck
