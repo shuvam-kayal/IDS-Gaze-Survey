@@ -1,0 +1,1 @@
+{"schema_version":"1.0.0","study_id":"study-product-evaluation","experience_id":"exp-demo-store","config_version":"1.0.0","status":"active","aoi_set_version":"1.0.0","question_set_version":"1.0.0","survey_policy":{"timing":"after_exposure","consolidation":"keep_study_scoped"},"gaze_required":false,"priority":10}

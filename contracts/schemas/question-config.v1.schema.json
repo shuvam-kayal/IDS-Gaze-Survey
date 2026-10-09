@@ -1,0 +1,5 @@
+{
+ "$schema":"https://json-schema.org/draft/2020-12/schema","title":"QuestionConfig","type":"object","additionalProperties":false,
+ "required":["schema_version","study_id","question_set_version","questions"],
+ "properties":{"schema_version":{"const":"1.0.0"},"study_id":{"type":"string"},"question_set_version":{"type":"string"},"questions":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["question_id","prompt","answer_type","required","order"],"properties":{"question_id":{"type":"string"},"prompt":{"type":"string"},"answer_type":{"enum":["single_choice","multi_choice","free_text","scale","boolean"]},"required":{"type":"boolean"},"order":{"type":"integer","minimum":0},"options":{"type":"array","items":{"type":"object","required":["option_id","label"],"properties":{"option_id":{"type":"string"},"label":{"type":"string"}}}}}}}}
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnalysisRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "analysis_request_id",
+    "study_id",
+    "feature_set_version",
+    "modality_policy",
+    "analysis_types",
+    "parameters"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "analysis_request_id": {
+      "type": "string"
+    },
+    "study_id": {
+      "type": "string"
+    },
+    "feature_set_version": {
+      "type": "string"
+    },
+    "modality_policy": {
+      "enum": [
+        "best_available",
+        "gaze_only",
+        "non_gaze_only"
+      ]
+    },
+    "analysis_types": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "descriptive",
+          "correlation",
+          "group_comparison",
+          "classification",
+          "regression",
+          "clustering"
+        ]
+      }
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "requested_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  }
+}

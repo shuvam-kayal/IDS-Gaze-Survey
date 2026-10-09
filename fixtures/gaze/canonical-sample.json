@@ -1,0 +1,1 @@
+{"schema_version":"1.0.0","sample_id":"gaze-synthetic-0001","session_id":"session-synthetic-gaze-0001","occurred_at":"2026-01-01T10:00:00Z","coordinate_space":"viewport_normalized","x_normalized":0.42,"y_normalized":0.31,"confidence":0.91,"valid":true,"calibration_status":"passed","quality_flags":[]}

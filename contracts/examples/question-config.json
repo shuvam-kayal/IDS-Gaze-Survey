@@ -1,0 +1,1 @@
+{"schema_version":"1.0.0","study_id":"study-product-evaluation","question_set_version":"1.0.0","questions":[{"question_id":"q-product-interest","prompt":"How interested are you in this product?","answer_type":"scale","required":true,"order":0}]}

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/study-config.v1.schema.json",
+  "title": "StudyConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "study_id",
+    "experience_id",
+    "config_version",
+    "status",
+    "aoi_set_version",
+    "question_set_version",
+    "survey_policy",
+    "gaze_required"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "study_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "experience_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "config_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "active",
+        "paused",
+        "closed"
+      ]
+    },
+    "aoi_set_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "question_set_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "survey_policy": {
+      "type": "object",
+      "required": [
+        "timing",
+        "consolidation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "timing": {
+          "enum": [
+            "before_exposure",
+            "after_exposure",
+            "after_each_trial",
+            "batched_after_exposure"
+          ]
+        },
+        "consolidation": {
+          "enum": [
+            "deduplicate_by_question_id",
+            "keep_study_scoped"
+          ]
+        }
+      }
+    },
+    "gaze_required": {
+      "const": false
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SessionBootstrap",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "experience_id",
+    "experience_config_version",
+    "eligible_studies",
+    "privacy_notice_version",
+    "research_consent_version",
+    "camera_capture_supported",
+    "issued_at",
+    "expires_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "experience_id": {
+      "type": "string"
+    },
+    "participant_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "experience_config_version": {
+      "type": "string"
+    },
+    "eligible_studies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "study_id",
+          "config_version",
+          "aoi_set_version",
+          "question_set_version"
+        ],
+        "properties": {
+          "study_id": {
+            "type": "string"
+          },
+          "config_version": {
+            "type": "string"
+          },
+          "aoi_set_version": {
+            "type": "string"
+          },
+          "question_set_version": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "privacy_notice_version": {
+      "type": "string"
+    },
+    "research_consent_version": {
+      "type": "string"
+    },
+    "camera_capture_supported": {
+      "type": "boolean"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

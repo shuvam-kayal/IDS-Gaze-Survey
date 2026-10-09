@@ -1,0 +1,21 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"GazeRecord",
+  "description":"Canonical internal gaze record. Normalize all provider output before use.",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["schema_version","sample_id","session_id","occurred_at","coordinate_space","x_normalized","y_normalized","confidence","valid","calibration_status","quality_flags"],
+  "properties":{
+    "schema_version":{"const":"1.0.0"},
+    "sample_id":{"type":"string","minLength":1},
+    "session_id":{"type":"string","minLength":1},
+    "occurred_at":{"type":"string","format":"date-time"},
+    "coordinate_space":{"const":"viewport_normalized"},
+    "x_normalized":{"type":["number","null"],"minimum":0,"maximum":1},
+    "y_normalized":{"type":["number","null"],"minimum":0,"maximum":1},
+    "confidence":{"type":["number","null"],"minimum":0,"maximum":1},
+    "valid":{"type":"boolean"},
+    "calibration_status":{"enum":["pending","passed","failed","not_required","low_quality"]},
+    "quality_flags":{"type":"array","items":{"type":"string"}}
+  }
+}

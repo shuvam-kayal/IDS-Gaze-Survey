@@ -1,0 +1,1 @@
+{"schema_version":"1.0.0","experience_id":"exp-demo-store","study_id":"study-product-evaluation","aoi_set_version":"1.0.0","aois":[{"aoi_id":"aoi-product-card-1","label":"Product card","selector":"[data-aoi='product-card-1']","tracking_strategy":"data_attribute","priority":10,"enabled":true}]}
