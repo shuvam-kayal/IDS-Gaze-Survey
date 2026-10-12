@@ -14,6 +14,9 @@ EXAMPLES = {
     "question-config.v1.schema.json": "question-config.json",
     "event-ingestion-response.v1.schema.json": "event-ingestion-response.json",
     "event-error.v1.schema.json": "event-error-invalid.json",
+    "provider-sample.v1.schema.json": "provider-sample.json",
+    "geometry-snapshot.v1.schema.json": "geometry-snapshot.json",
+    "survey-plan.v1.schema.json": "survey-plan.json",
 }
 
 def test_schemas_are_valid_and_examples_match():
@@ -36,3 +39,26 @@ def test_all_event_error_examples_match_error_contract():
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
     for example_path in (ROOT / "contracts/examples").glob("event-error-*.json"):
         validator.validate(json.loads(example_path.read_text()))
+
+
+def test_ingestion_response_rejects_inconsistent_duplicate_flag():
+    schema_path = ROOT / "contracts/schemas/event-ingestion-response.v1.schema.json"
+    schema = json.loads(schema_path.read_text())
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    invalid = {
+        "schema_version": "1.0.0",
+        "event_id": "evt-demo-0001",
+        "status": "accepted",
+        "duplicate": True,
+        "ingested_at": "2026-01-01T10:00:03Z",
+    }
+    assert list(validator.iter_errors(invalid))
+
+
+def test_duplicate_ingestion_response_example_matches_contract():
+    schema_path = ROOT / "contracts/schemas/event-ingestion-response.v1.schema.json"
+    schema = json.loads(schema_path.read_text())
+    example = json.loads(
+        (ROOT / "contracts/examples/event-ingestion-response-duplicate.json").read_text()
+    )
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(example)

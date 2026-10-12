@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0.0",
+  "survey_plan_id": "survey-plan-0001",
+  "session_id": "sess-demo-0001",
+  "study_ids": ["study-a", "study-b"],
+  "question_ids": ["q-overall", "q-ease"],
+  "presentation": "end_of_session"
+}

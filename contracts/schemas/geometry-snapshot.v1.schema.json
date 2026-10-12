@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/geometry-snapshot.v1.schema.json",
+  "title": "GeometrySnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "session_id",
+    "captured_at",
+    "aoi_set_version",
+    "viewport_width_px",
+    "viewport_height_px",
+    "scroll_x_px",
+    "scroll_y_px",
+    "zoom",
+    "rectangles"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "snapshot_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "aoi_set_version": {"type": "string", "minLength": 1},
+    "viewport_width_px": {"type": "number", "exclusiveMinimum": 0},
+    "viewport_height_px": {"type": "number", "exclusiveMinimum": 0},
+    "scroll_x_px": {"type": "number", "minimum": 0},
+    "scroll_y_px": {"type": "number", "minimum": 0},
+    "zoom": {"type": "number", "exclusiveMinimum": 0},
+    "rectangles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["aoi_id", "left_px", "top_px", "right_px", "bottom_px", "priority"],
+        "properties": {
+          "aoi_id": {"type": "string", "minLength": 1},
+          "left_px": {"type": "number"},
+          "top_px": {"type": "number"},
+          "right_px": {"type": "number"},
+          "bottom_px": {"type": "number"},
+          "priority": {"type": "integer"}
+        }
+      }
+    }
+  }
+}
