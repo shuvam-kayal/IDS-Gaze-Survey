@@ -1,6 +1,11 @@
 # Gaze and non-gaze fallback
 
-Research consent and browser camera permission are separate. Never activate capture before informed consent; provide visible status and a stop control. Stop on withdrawal, session end or permission loss.
+The provider boundary, coordinate conventions, fixation baseline, metric
+definitions, and missingness codes are frozen in
+[`INTEGRATION_FREEZE.md`](INTEGRATION_FREEZE.md). Research consent and browser
+camera permission are separate. Never activate capture before informed
+consent; provide visible status and a stop control. Stop on withdrawal, session
+end or permission loss.
 
 In gaze mode, P1 captures only under consent. P3 normalizes external estimator output to canonical GazeRecord, tracks calibration/quality, maps samples to versioned AOIs and computes gaze features.
 

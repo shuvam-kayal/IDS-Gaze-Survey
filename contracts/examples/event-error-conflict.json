@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "error": {
+    "code": "event_identity_conflict",
+    "message": "event_id is already used with different content"
+  }
+}

@@ -1,3 +1,15 @@
 # Test strategy
 
-Contract tests validate schemas, examples and producer/consumer compatibility. Unit tests cover consent/camera state, retries, AOI geometry, fixation/feature math, missingness and statistics. Integration tests cover API/database migrations, idempotent ingestion, config pinning, feature persistence and result retrieval. Browser tests cover invitation/decline, all camera states, scroll/resize/zoom, survey validation, multi-study and withdrawal. Research validity tests use participant/session grouped splits, baselines, sample-size checks and reproducible evaluation. End-to-end tests cover gaze-enabled and camera-denied journeys. Privacy/security tests cover origins, roles, deletion, retention and sensitive logging. CI jobs and browser/database tests should expand as implementations land.
+Contract tests validate schemas, examples and producer/consumer compatibility.
+The cross-workstream test contract, PostgreSQL requirement, idempotency scope,
+deletion verification, and provider-experiment isolation are frozen in
+[`architecture/INTEGRATION_FREEZE.md`](../architecture/INTEGRATION_FREEZE.md).
+Unit tests cover consent/camera state, retries, AOI geometry, fixation/feature
+math, missingness and statistics. Integration tests cover API/database
+migrations, idempotent ingestion, config pinning, feature persistence and
+result retrieval. Browser tests cover invitation/decline, all camera states,
+scroll/resize/zoom, survey validation, multi-study and withdrawal. Research
+validity tests use participant/session grouped splits, baselines, sample-size
+checks and reproducible evaluation. End-to-end tests cover gaze-enabled and
+camera-denied journeys. Privacy/security tests cover origins, roles,
+deletion, retention and sensitive logging.

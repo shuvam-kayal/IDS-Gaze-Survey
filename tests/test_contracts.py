@@ -12,6 +12,8 @@ EXAMPLES = {
     "session-bootstrap.v1.schema.json": "session-bootstrap.json",
     "aoi-config.v1.schema.json": "aoi-config.json",
     "question-config.v1.schema.json": "question-config.json",
+    "event-ingestion-response.v1.schema.json": "event-ingestion-response.json",
+    "event-error.v1.schema.json": "event-error-invalid.json",
 }
 
 def test_schemas_are_valid_and_examples_match():
@@ -26,3 +28,11 @@ def test_schemas_are_valid_and_examples_match():
                 example_path = ROOT / "contracts/examples" / example_name
             example = json.loads(example_path.read_text())
             Draft202012Validator(schema, format_checker=FormatChecker()).validate(example)
+
+
+def test_all_event_error_examples_match_error_contract():
+    schema_path = ROOT / "contracts/schemas/event-error.v1.schema.json"
+    schema = json.loads(schema_path.read_text())
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    for example_path in (ROOT / "contracts/examples").glob("event-error-*.json"):
+        validator.validate(json.loads(example_path.read_text()))
