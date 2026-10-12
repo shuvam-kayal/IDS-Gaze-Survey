@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/event-ingestion-response.v1.schema.json",
+  "title": "EventIngestionResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "status", "duplicate", "ingested_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "event_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["accepted", "duplicate"]},
+    "duplicate": {"type": "boolean"},
+    "ingested_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|\\+00:00)$"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "status": {"const": "accepted"},
+        "duplicate": {"const": false}
+      }
+    },
+    {
+      "properties": {
+        "status": {"const": "duplicate"},
+        "duplicate": {"const": true}
+      }
+    }
+  ]
+}

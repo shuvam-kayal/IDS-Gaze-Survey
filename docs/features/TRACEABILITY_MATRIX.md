@@ -1,11 +1,9 @@
 # Feature traceability
 
-| IDs | Primary paths | Initial status |
-|---|---|---|
-| A–C, J–K, M | `apps/researcher-console/`, future control plane | planned |
-| D–I, L, N, O | `packages/participant-sdk/`, future demo | interface scaffold only |
-| P–X | future telemetry/gaze/feature services | planned |
-| Y–AE | future analytics/results | planned |
-| AF | all subsystems and infra | scaffolding only |
+The exact A-AF owner, producer, consumer, contract, persistence requirement,
+acceptance evidence, and current status are frozen in
+[`architecture/INTEGRATION_FREEZE.md`](../architecture/INTEGRATION_FREEZE.md),
+Section 13. That table is authoritative and must be updated with the linked
+issue/PR and test evidence when implementation advances.
 
-Replace ranges with exact test paths and linked PRs as implementation lands. A folder or interface alone does not count as complete.
+A schema, folder, or interface alone does not count as a completed feature.

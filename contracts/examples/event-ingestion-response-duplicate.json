@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt-demo-0001",
+  "status": "duplicate",
+  "duplicate": true,
+  "ingested_at": "2026-01-01T10:00:03Z"
+}

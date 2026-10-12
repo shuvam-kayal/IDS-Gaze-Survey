@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/provider-sample.v1.schema.json",
+  "title": "ProviderSample",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider",
+    "provider_version",
+    "sample_id",
+    "capture_time_ms",
+    "occurred_at",
+    "x_px",
+    "y_px",
+    "valid",
+    "quality"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "provider": {"type": "string", "minLength": 1},
+    "provider_version": {"type": "string", "minLength": 1},
+    "sample_id": {"type": "string", "minLength": 1},
+    "capture_time_ms": {"type": "number", "minimum": 0},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "x_px": {"type": ["number", "null"]},
+    "y_px": {"type": ["number", "null"]},
+    "valid": {"type": "boolean"},
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confidence", "flags"],
+      "properties": {
+        "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "flags": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

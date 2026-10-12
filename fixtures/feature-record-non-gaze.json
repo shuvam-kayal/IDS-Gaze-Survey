@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "feature_record_id": "feat-synthetic-nongaze-0001",
+  "experience_id": "exp-demo-store",
+  "study_id": "study-product-evaluation",
+  "session_id": "session-synthetic-nongaze-0001",
+  "feature_set_version": "1.0.0",
+  "config_version": null,
+  "aoi_set_version": null,
+  "modality": "non_gaze_only",
+  "window": null,
+  "features": {
+    "interaction.click_count": 1,
+    "interaction.scroll_distance_px": 100.0,
+    "survey.completion_ratio": null
+  },
+  "quality": {
+    "gaze_available": false,
+    "missingness": ["gaze.permission_denied"],
+    "calibration_status": null
+  },
+  "source_event_count": 3
+}

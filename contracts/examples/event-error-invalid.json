@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "error": {
+    "code": "invalid_event",
+    "message": "occurred_at must include a UTC offset"
+  }
+}

@@ -17,6 +17,8 @@ The frozen four-person split is documented in [Work division](docs/team/WORK_DIV
 
 Versioned JSON Schemas and synthetic examples live in `contracts/`. Read [contract versioning](docs/contracts/CONTRACT_VERSIONING.md) and the [A–AF master feature checklist](docs/features/MASTER_FEATURE_CHECKLIST.md). Camera denial, unavailability or interruption must not block survey and non-gaze analysis; see [gaze and fallback](docs/architecture/GAZE_AND_FALLBACK.md).
 
+The cross-workstream integration decisions are frozen in [the integration freeze](docs/architecture/INTEGRATION_FREEZE.md). It is the authority for canonical IDs, event identity and ordering, PostgreSQL/Alembic persistence, API response semantics, retention/deletion defaults, FeatureRecord missingness, the browser-to-gaze boundary, AOI geometry, metric definitions, ownership, and implementation order.
+
 ## Current limitations
 
 The minimal API has a health route and a shape-validating event endpoint. **Events are not persisted.** Authentication, database migrations, real session/config APIs, camera capture, gaze-provider integration, feature computation, models and dashboards are not implemented yet. TypeScript packages are domain/interface scaffolds rather than full web applications. Do not use this repository to collect real participant data.

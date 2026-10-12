@@ -1,0 +1,35 @@
+[
+  {
+    "schema_version": "1.0.0",
+    "event_id": "evt-nongaze-click-0001",
+    "experience_id": "exp-demo-store",
+    "study_ids": ["study-product-evaluation"],
+    "session_id": "session-synthetic-nongaze-0001",
+    "participant_id": null,
+    "event_type": "interaction.click",
+    "occurred_at": "2026-01-01T10:00:00Z",
+    "payload": {"target_aoi_id": "aoi-product-card-1"}
+  },
+  {
+    "schema_version": "1.0.0",
+    "event_id": "evt-nongaze-scroll-0001",
+    "experience_id": "exp-demo-store",
+    "study_ids": ["study-product-evaluation"],
+    "session_id": "session-synthetic-nongaze-0001",
+    "participant_id": null,
+    "event_type": "interaction.scroll",
+    "occurred_at": "2026-01-01T10:00:01Z",
+    "payload": {"scroll_delta_px": 120}
+  },
+  {
+    "schema_version": "1.0.0",
+    "event_id": "evt-nongaze-scroll-0002",
+    "experience_id": "exp-demo-store",
+    "study_ids": ["study-product-evaluation"],
+    "session_id": "session-synthetic-nongaze-0001",
+    "participant_id": null,
+    "event_type": "interaction.scroll",
+    "occurred_at": "2026-01-01T10:00:02Z",
+    "payload": {"scroll_delta_px": -20}
+  }
+]

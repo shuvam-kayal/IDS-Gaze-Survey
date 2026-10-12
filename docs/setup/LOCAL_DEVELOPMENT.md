@@ -11,4 +11,8 @@ The API image installs only the runtime dependencies. Uvicorn's optional `standa
 
 Without Docker: create/activate a venv, run `pip install -e ".[dev]"`, `ruff check .`, `pytest`, then `npm install` and `npm run typecheck`.
 
-Limitations: no database migration runner or durable telemetry persistence yet; UI packages are typed domain scaffolds, not full web apps. Do not use this setup for real participant data.
+The integration freeze selects PostgreSQL 16, SQLAlchemy 2.x, psycopg 3 and
+Alembic for the persistence implementation. The current checkout still has no
+migration runner or durable telemetry persistence; those are the next
+coordinated implementation work. UI packages are typed domain scaffolds, not
+full web apps. Do not use this setup for real participant data.

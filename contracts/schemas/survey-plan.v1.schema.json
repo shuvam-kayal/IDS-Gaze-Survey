@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/survey-plan.v1.schema.json",
+  "title": "ConsolidatedSurveyPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "survey_plan_id", "session_id", "study_ids", "question_ids", "presentation"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "survey_plan_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "study_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "question_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "presentation": {"const": "end_of_session"}
+  }
+}
