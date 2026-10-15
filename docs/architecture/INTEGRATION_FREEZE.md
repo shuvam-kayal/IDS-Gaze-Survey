@@ -205,10 +205,10 @@ deletes them.
 
 ## 6. API contract freeze
 
-The current `/v1/events` endpoint is still a scaffold and returns
-`persisted: false`. The following is the target v1 behavior for the
-coordinated persistence change. It must be implemented in `services/api/app.py`
-only with affected-owner review.
+The `/v1/events` endpoint implements the following v1 behavior for the M2a
+coordinated persistence slice. Authentication, authorization and public
+retrieval remain later coordinated work. Changes to `services/api/app.py`
+require affected-owner review.
 
 ### Request
 

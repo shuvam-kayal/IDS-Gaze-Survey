@@ -26,6 +26,6 @@ The survey plan is a separate session-scoped contract rather than an added
 field on `SessionBootstrap`; this preserves the existing bootstrap v1 shape
 while making the multi-study consolidation boundary explicit.
 
-The current API implementation is intentionally still a scaffold and returns
-`persisted: false`. Implementing the frozen response behavior requires a
-coordinated change to the shared API route and its tests.
+The `/v1/events` route now implements the frozen acceptance, exact-retry and
+identity-conflict response behavior. Authentication, authorization and public
+retrieval remain coordinated later work.
