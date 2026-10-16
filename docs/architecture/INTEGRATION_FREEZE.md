@@ -442,6 +442,13 @@ The first reusable baseline is `feature_algorithm_version = gaze-baseline-1`:
   reason code when fewer than two valid AOI observations exist.
 - Every metric records units, denominator, time window, AOI/config versions,
   algorithm version, and missingness/quality context.
+- Trial-scoped gaze processing uses the additive
+  `gaze-observation-association.v1.schema.json` contract. It carries the
+  study-scoped `(session_id, study_id, trial_id)` identity, the pinned
+  `aoi_set_version`, and a start-inclusive/end-exclusive observation window.
+  `trial.exposure_ended` is the paired study-scoped lifecycle event. Samples
+  outside that window are rejected, and an empty requested window is reported
+  as missing rather than as zero.
 
 These are operational measurement definitions, not claims of scientific
 validity. P4 must report limitations and sample quality.

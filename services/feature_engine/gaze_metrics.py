@@ -10,6 +10,7 @@ from typing import Any
 
 from services.feature_engine.non_gaze import build_non_gaze_features
 from services.gaze_engine.adapter import GazeNormalizationError
+from services.gaze_engine.context import TrialObservationContext
 from services.gaze_engine.fixation import FIXATION_ALGORITHM_VERSION, AOIAssignment, Fixation
 from services.telemetry.ingestion import _parse_utc_timestamp
 
@@ -19,6 +20,7 @@ UNAVAILABLE_START = "gaze.observation_start_missing"
 NO_QUALIFYING_FIXATION = "gaze.no_qualifying_fixation"
 METRIC_UNDEFINED = "gaze.metric_undefined"
 NO_SAMPLES = "gaze.no_samples"
+NO_QUALIFYING_OBSERVATIONS = "gaze.no_qualifying_observations"
 AMBIGUOUS_START = "gaze.observation_start_ambiguous"
 
 
@@ -108,13 +110,23 @@ def resolve_start_event(
 
 
 def _ordered_pairs(
-    fixations: list[Fixation], assignments: list[AOIAssignment]
+    fixations: list[Fixation], assignments: list[AOIAssignment], context: TrialObservationContext | None = None
 ) -> list[tuple[Fixation, AOIAssignment]]:
     by_id = {fixation.fixation_id: fixation for fixation in fixations}
     if len(by_id) != len(fixations) or len({assignment.observation_id for assignment in assignments}) != len(assignments):
         raise GazeNormalizationError("fixation and AOI identities must be unique")
     if set(by_id) != {assignment.observation_id for assignment in assignments}:
         raise GazeNormalizationError("fixation and AOI assignments must match")
+    if context is not None:
+        for fixation, assignment in ((by_id[item.observation_id], item) for item in assignments):
+            if (fixation.session_id, fixation.study_id, fixation.trial_id, fixation.aoi_set_version) != (
+                context.session_id, context.study_id, context.trial_id, context.aoi_set_version
+            ):
+                raise GazeNormalizationError("fixation context does not match requested observation context")
+            if assignment.session_id is not None and (
+                assignment.session_id, assignment.study_id, assignment.trial_id, assignment.aoi_set_version
+            ) != (context.session_id, context.study_id, context.trial_id, context.aoi_set_version):
+                raise GazeNormalizationError("AOI assignment context does not match requested observation context")
     return sorted(
         ((by_id[assignment.observation_id], assignment) for assignment in assignments),
         key=lambda pair: (_timestamp(pair[0].start_at, "fixation.start_at"), pair[0].fixation_id),
@@ -143,6 +155,7 @@ def compute_gaze_metrics(
     time_window: str = "trial",
     window_start: str | None = None,
     window_end: str | None = None,
+    observation_context: TrialObservationContext | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Compute TTFF, dwell, revisits, transitions, entropy, and scan path.
 
@@ -157,7 +170,18 @@ def compute_gaze_metrics(
     with at least two observations.
     """
 
-    pairs = _ordered_pairs(fixations, assignments)
+    if observation_context is not None and (
+        observation_context.session_id != session_id
+        or observation_context.study_id != study_id
+        or observation_context.aoi_set_version != aoi_set_version
+    ):
+        raise GazeNormalizationError("requested metric context does not match observation context")
+    if observation_context is None and any(
+        fixation.session_id is not None or fixation.study_id is not None or fixation.trial_id is not None
+        for fixation in fixations
+    ):
+        raise GazeNormalizationError("observation_context is required for contextualized fixations")
+    pairs = _ordered_pairs(fixations, assignments, observation_context)
     start_error: str | None = None
     if isinstance(start_event, list):
         start_event, start_error = resolve_start_event(
@@ -165,10 +189,12 @@ def compute_gaze_metrics(
         )
     start_time = None
     if start_event is not None:
-        _validate_start_event(start_event, session_id=session_id, study_id=study_id)
+        start_trial_id = _validate_start_event(start_event, session_id=session_id, study_id=study_id)
+        if observation_context is not None and start_trial_id != observation_context.trial_id:
+            raise GazeNormalizationError("start_event trial_id does not match observation context")
         start_time = _timestamp(start_event["occurred_at"], "start_event.occurred_at")
-    lower_bound = _timestamp(window_start, "window_start") if window_start else start_time
-    upper_bound = _timestamp(window_end, "window_end") if window_end else None
+    lower_bound = observation_context.start if observation_context else (_timestamp(window_start, "window_start") if window_start else start_time)
+    upper_bound = observation_context.end if observation_context else (_timestamp(window_end, "window_end") if window_end else None)
     if lower_bound is not None and upper_bound is not None and upper_bound <= lower_bound:
         raise GazeNormalizationError("window_end must be after window_start")
     if lower_bound is not None or upper_bound is not None:
@@ -179,12 +205,14 @@ def compute_gaze_metrics(
             and (upper_bound is None or _timestamp(fixation.end_at, "fixation.end_at") <= upper_bound)
         ]
     availability_reason = _availability_reason(gaze_available, gaze_missingness, bool(fixations))
+    if observation_context is not None and gaze_available and not fixations:
+        availability_reason = NO_QUALIFYING_OBSERVATIONS
     common = {
         "aoi_set_version": aoi_set_version,
         "time_window": time_window,
         "requested_aoi_id": requested_aoi_id,
-        "window_start": window_start or (start_event["occurred_at"] if start_event else None),
-        "window_end": window_end,
+        "window_start": observation_context.window_start if observation_context else (window_start or (start_event["occurred_at"] if start_event else None)),
+        "window_end": observation_context.window_end if observation_context else window_end,
     }
     if availability_reason:
         ttff_reason = availability_reason
@@ -276,10 +304,16 @@ def compute_gaze_metrics(
 
     if not pairs and not availability_reason:
         scan_path = []
-        scan_reason = NO_SAMPLES
-        transition_reason = NO_SAMPLES
-        revisit_reason = NO_SAMPLES
-        entropy_reason = NO_SAMPLES
+        empty_reason = NO_QUALIFYING_OBSERVATIONS if observation_context else NO_SAMPLES
+        scan_reason = empty_reason
+        transition_reason = empty_reason
+        revisit_reason = empty_reason
+        entropy_reason = empty_reason
+        dwell_reason = empty_reason
+        if start_time is None:
+            ttff_reason = UNAVAILABLE_START
+        else:
+            ttff_reason = empty_reason
     elif not resolved and not availability_reason:
         entropy_reason = "aoi.unresolved"
 

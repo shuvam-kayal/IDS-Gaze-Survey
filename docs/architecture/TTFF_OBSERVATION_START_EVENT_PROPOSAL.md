@@ -1,17 +1,25 @@
 # Proposal: TTFF observation-start event
 
-Status: approved implementation decision record
+Status: approved implementation decision record (updated for Slice V trial isolation)
 
 This document records the approved smallest lifecycle addition needed to measure
 time to first fixation (TTFF). The versioned contracts and implementation are
 the authoritative artifacts; this document retains the rationale and ownership
 decisions.
 
-Approved decisions: `trial.exposure_started` is study-scoped with exactly one
+Approved decisions: `trial.exposure_started` and `trial.exposure_ended` are study-scoped with exactly one
 `study_ids` entry; `trial_id` is unique within `(session_id, study_id)`; no
 `exposure_id` is introduced; multi-study geometry uses GeometrySnapshot v2 with
 required `study_id`; and metric values use the documented nullable per-metric
 object convention.
+
+Slice V additionally uses the additive
+[`gaze-observation-association.v1.schema.json`](../../contracts/schemas/gaze-observation-association.v1.schema.json)
+to carry `(session_id, study_id, trial_id, aoi_set_version)` and an explicit
+start-inclusive/end-exclusive observation window with canonical GazeRecords.
+This preserves the v1 GazeRecord shape while preventing callers from relying on
+unstated pre-filtering. The paired lifecycle end event is defined by
+[`trial-exposure-end.v1.schema.json`](../../contracts/schemas/trial-exposure-end.v1.schema.json).
 
 ## Existing definitions
 
@@ -60,6 +68,14 @@ the already-granted consent and pinned session configuration. It is emitted
 once per trial observation attempt, before or at the first participant-visible
 exposure state. It is not the time the event reaches the server and is not the
 time the first gaze sample arrives.
+
+The paired `trial.exposure_ended` event means the instant at which that
+participant-visible exposure stops being eligible for observation. A complete
+metric window requires one unambiguous start and one unambiguous end; an
+end-before-start pair, a missing boundary, or conflicting distinct boundaries
+is not silently converted into a complete observation. Late valid events retain
+their `occurred_at` and trigger recomputation of the affected study-scoped
+trial.
 
 This definition deliberately does not claim that a gaze sample exists at the
 start. If camera capture is unavailable or denied, the event may still exist
@@ -168,6 +184,22 @@ multi-study mapping.
 - Camera denial, provider failure, interrupted capture, or no gaze samples:
   the existing `non_gaze_only` path remains valid and no gaze metric is
   fabricated.
+
+### Trial isolation implementation boundary
+
+The production metric path accepts a validated `TrialObservationContext` from
+the association contract. Fixations and AOI assignments produced with that
+context retain the same study/trial/version identity. Samples outside the
+start-inclusive/end-exclusive window are rejected by association validation;
+fixations are also checked against the context before metrics are calculated.
+Legacy single-study v1 geometry mapping remains available only when the input
+contains no v2 or multi-study geometry. A v2 or multi-study mapping call without
+both `study_id` and `aoi_set_version` is rejected as ambiguous.
+
+An observation window with no qualifying records is unavailable with
+`gaze.no_qualifying_observations`; it is not a measured zero. A measured zero
+is permitted only after a complete, valid window contains qualifying gaze
+observations and the metric definition yields zero.
 
 ## Metric missingness representation
 

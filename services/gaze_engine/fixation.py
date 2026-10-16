@@ -14,6 +14,7 @@ from statistics import fmean
 from typing import Any
 
 from services.gaze_engine.adapter import DuplicateSampleIdentity, GazeNormalizationError
+from services.gaze_engine.context import TrialObservationContext, validate_observation_association
 from services.gaze_engine.quality import evaluate_gaze_quality
 from services.telemetry.ingestion import _parse_utc_timestamp
 
@@ -45,6 +46,10 @@ class Fixation:
     x_normalized: float
     y_normalized: float
     algorithm_version: str = FIXATION_ALGORITHM_VERSION
+    session_id: str | None = None
+    study_id: str | None = None
+    trial_id: str | None = None
+    aoi_set_version: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -58,6 +63,10 @@ class AOIAssignment:
     aoi_id: str
     snapshot_id: str | None
     reason: str | None
+    session_id: str | None = None
+    study_id: str | None = None
+    trial_id: str | None = None
+    aoi_set_version: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -100,7 +109,9 @@ def _dispersion(records: list[dict[str, Any]]) -> tuple[float, float]:
     return max(xs) - min(xs), max(ys) - min(ys)
 
 
-def detect_fixations(records: list[dict[str, Any]]) -> list[Fixation]:
+def detect_fixations(
+    records: list[dict[str, Any]], *, context: TrialObservationContext | None = None
+) -> list[Fixation]:
     """Detect greedy, non-overlapping dispersion-duration fixations.
 
     Records are ordered by UTC occurrence timestamp and sample ID. Invalid or
@@ -112,6 +123,11 @@ def detect_fixations(records: list[dict[str, Any]]) -> list[Fixation]:
     """
 
     ordered = _validated_records(records)
+    if context is not None:
+        for record in ordered:
+            occurred = _timestamp(record["occurred_at"], "occurred_at")
+            if record["session_id"] != context.session_id or not (context.start <= occurred < context.end):
+                raise GazeNormalizationError("gaze record is outside the trial observation context")
     fixations: list[Fixation] = []
     run: list[dict[str, Any]] = []
 
@@ -146,6 +162,10 @@ def detect_fixations(records: list[dict[str, Any]]) -> list[Fixation]:
                     duration_ms=int((end_time - start_time).total_seconds() * 1000),
                     x_normalized=fmean(record["x_normalized"] for record in candidate),
                     y_normalized=fmean(record["y_normalized"] for record in candidate),
+                    session_id=context.session_id if context else None,
+                    study_id=context.study_id if context else None,
+                    trial_id=context.trial_id if context else None,
+                    aoi_set_version=context.aoi_set_version if context else None,
                 )
             )
             index = last_qualifying + 1
@@ -165,6 +185,13 @@ def detect_fixations(records: list[dict[str, Any]]) -> list[Fixation]:
         previous_time = current_time
     flush_run(run)
     return fixations
+
+
+def detect_fixations_from_association(association: dict[str, Any]) -> list[Fixation]:
+    """Validate explicit trial context before running the detector."""
+
+    context, records = validate_observation_association(association)
+    return detect_fixations(records, context=context)
 
 
 def _valid_rectangle(rectangle: dict[str, Any]) -> bool:
@@ -285,11 +312,14 @@ def map_gaze_to_aois(
 
     ordered = _validated_records(records)
     snapshots = _snapshots(geometry_snapshots)
+    versions = {(snapshot["_study_id"], snapshot["aoi_set_version"]) for snapshot in snapshots}
+    if (study_id is None or aoi_set_version is None) and (len(versions) > 1 or any(snapshot["schema_version"] == "2.0.0" for snapshot in snapshots)):
+        raise GazeNormalizationError("study_id and aoi_set_version are required for multi-study AOI mapping")
     assignments: list[AOIAssignment] = []
     for record in ordered:
         if not _eligible(record):
             reason = "gaze.invalid" if not record["valid"] else "gaze.coordinates_missing"
-            assignments.append(AOIAssignment(record["sample_id"], "aoi.unresolved", None, reason))
+            assignments.append(AOIAssignment(record["sample_id"], "aoi.unresolved", None, reason, record["session_id"], study_id, None, aoi_set_version))
             continue
         at = _timestamp(record["occurred_at"], "occurred_at")
         snapshot = _snapshot_for(
@@ -300,7 +330,7 @@ def map_gaze_to_aois(
             aoi_set_version=aoi_set_version,
         )
         if snapshot is None:
-            assignments.append(AOIAssignment(record["sample_id"], "aoi.unresolved", None, "aoi.unresolved"))
+            assignments.append(AOIAssignment(record["sample_id"], "aoi.unresolved", None, "aoi.unresolved", record["session_id"], study_id, None, aoi_set_version))
             continue
         aoi_id = _resolve_aoi(snapshot, record["x_normalized"], record["y_normalized"])
         assignments.append(
@@ -309,6 +339,7 @@ def map_gaze_to_aois(
                 aoi_id or "aoi.unresolved",
                 snapshot["snapshot_id"],
                 None if aoi_id else "aoi.unresolved",
+                record["session_id"], study_id, None, aoi_set_version,
             )
         )
     return assignments
@@ -325,6 +356,9 @@ def map_fixations_to_aois(
     """Map fixation centroids using a study/version-matched snapshot."""
 
     snapshots = _snapshots(geometry_snapshots)
+    versions = {(snapshot["_study_id"], snapshot["aoi_set_version"]) for snapshot in snapshots}
+    if (study_id is None or aoi_set_version is None) and (len(versions) > 1 or any(snapshot["schema_version"] == "2.0.0" for snapshot in snapshots)):
+        raise GazeNormalizationError("study_id and aoi_set_version are required for multi-study AOI mapping")
     assignments: list[AOIAssignment] = []
     for fixation in fixations:
         snapshot = _snapshot_for(
@@ -335,7 +369,7 @@ def map_fixations_to_aois(
             aoi_set_version=aoi_set_version,
         )
         if snapshot is None:
-            assignments.append(AOIAssignment(fixation.fixation_id, "aoi.unresolved", None, "aoi.unresolved"))
+            assignments.append(AOIAssignment(fixation.fixation_id, "aoi.unresolved", None, "aoi.unresolved", session_id, study_id, fixation.trial_id, aoi_set_version))
             continue
         aoi_id = _resolve_aoi(snapshot, fixation.x_normalized, fixation.y_normalized)
         assignments.append(
@@ -344,6 +378,7 @@ def map_fixations_to_aois(
                 aoi_id or "aoi.unresolved",
                 snapshot["snapshot_id"],
                 None if aoi_id else "aoi.unresolved",
+                session_id, study_id, fixation.trial_id, aoi_set_version,
             )
         )
     return assignments

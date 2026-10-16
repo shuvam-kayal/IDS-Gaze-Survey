@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "association_id": "assoc-session-0001-study-a-trial-0001",
+  "session_id": "session-synthetic-0001",
+  "study_id": "study-product-evaluation",
+  "trial_id": "trial-0001",
+  "aoi_set_version": "aoi-v1",
+  "window_start": "2026-01-01T10:00:00Z",
+  "window_end": "2026-01-01T10:00:10Z",
+  "gaze_records": []
+}

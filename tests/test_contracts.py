@@ -18,6 +18,8 @@ EXAMPLES = {
     "geometry-snapshot.v1.schema.json": "geometry-snapshot.json",
     "geometry-snapshot.v2.schema.json": "geometry-snapshot-v2.json",
     "trial-exposure-start.v1.schema.json": "trial-exposure-start.json",
+    "trial-exposure-end.v1.schema.json": "trial-exposure-end.json",
+    "gaze-observation-association.v1.schema.json": "gaze-observation-association.json",
     "survey-plan.v1.schema.json": "survey-plan.json",
 }
 

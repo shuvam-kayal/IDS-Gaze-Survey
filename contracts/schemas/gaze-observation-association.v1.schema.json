@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/gaze-observation-association.v1.schema.json",
+  "title": "GazeObservationAssociation",
+  "description": "Explicit study/trial/window context for canonical gaze records.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "association_id", "session_id", "study_id", "trial_id", "aoi_set_version", "window_start", "window_end", "gaze_records"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "association_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "study_id": {"type": "string", "minLength": 1},
+    "trial_id": {"type": "string", "minLength": 1},
+    "aoi_set_version": {"type": "string", "minLength": 1},
+    "window_start": {"type": "string", "format": "date-time", "pattern": "(Z|\\+00:00)$"},
+    "window_end": {"type": "string", "format": "date-time", "pattern": "(Z|\\+00:00)$"},
+    "gaze_records": {"type": "array", "items": {"$ref": "gaze-record.v1.schema.json"}}
+  }
+}
