@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "provider": "synthetic-provider",
+  "provider_version": "fixture-1",
+  "sample_id": "sample-invalid-0001",
+  "capture_time_ms": 1300,
+  "occurred_at": "2026-01-01T10:00:01.050+00:00",
+  "x_px": null,
+  "y_px": null,
+  "valid": false,
+  "quality": {"confidence": null, "flags": ["provider.no_prediction"]}
+}

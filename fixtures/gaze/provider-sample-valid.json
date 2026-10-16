@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "provider": "synthetic-provider",
+  "provider_version": "fixture-1",
+  "sample_id": "sample-0001",
+  "capture_time_ms": 1250.5,
+  "occurred_at": "2026-01-01T10:00:01Z",
+  "x_px": 512,
+  "y_px": 384,
+  "valid": true,
+  "quality": {"confidence": 0.8, "flags": []}
+}
