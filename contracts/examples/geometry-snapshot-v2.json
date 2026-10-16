@@ -1,0 +1,16 @@
+{
+  "schema_version": "2.0.0",
+  "snapshot_id": "geometry-0001",
+  "session_id": "sess-demo-0001",
+  "study_id": "study-product-evaluation",
+  "captured_at": "2026-01-01T10:00:00Z",
+  "aoi_set_version": "aoi-v1",
+  "viewport_width_px": 1024,
+  "viewport_height_px": 768,
+  "scroll_x_px": 0,
+  "scroll_y_px": 120,
+  "zoom": 1,
+  "rectangles": [
+    {"aoi_id": "headline", "left_px": 100, "top_px": 80, "right_px": 900, "bottom_px": 180, "priority": 10}
+  ]
+}

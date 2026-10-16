@@ -16,6 +16,8 @@ EXAMPLES = {
     "event-error.v1.schema.json": "event-error-invalid.json",
     "provider-sample.v1.schema.json": "provider-sample.json",
     "geometry-snapshot.v1.schema.json": "geometry-snapshot.json",
+    "geometry-snapshot.v2.schema.json": "geometry-snapshot-v2.json",
+    "trial-exposure-start.v1.schema.json": "trial-exposure-start.json",
     "survey-plan.v1.schema.json": "survey-plan.json",
 }
 
@@ -62,3 +64,28 @@ def test_duplicate_ingestion_response_example_matches_contract():
         (ROOT / "contracts/examples/event-ingestion-response-duplicate.json").read_text()
     )
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(example)
+
+
+def test_trial_exposure_start_requires_one_study_and_trial_id():
+    schema = json.loads((ROOT / "contracts/schemas/trial-exposure-start.v1.schema.json").read_text())
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    valid = json.loads((ROOT / "contracts/examples/trial-exposure-start.json").read_text())
+    validator.validate(valid)
+    for invalid in (
+        {**valid, "study_ids": ["study-a", "study-b"]},
+        {**valid, "payload": {}},
+        {**valid, "occurred_at": "2026-01-01T10:00:00"},
+        {**valid, "event_type": "trial.started"},
+    ):
+        assert list(validator.iter_errors(invalid))
+
+
+def test_geometry_v2_requires_study_id_and_rejects_invalid_version():
+    schema = json.loads((ROOT / "contracts/schemas/geometry-snapshot.v2.schema.json").read_text())
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    valid = json.loads((ROOT / "contracts/examples/geometry-snapshot-v2.json").read_text())
+    validator.validate(valid)
+    missing_study = {key: value for key, value in valid.items() if key != "study_id"}
+    wrong_version = {**valid, "schema_version": "1.0.0"}
+    assert list(validator.iter_errors(missing_study))
+    assert list(validator.iter_errors(wrong_version))

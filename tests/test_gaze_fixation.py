@@ -174,3 +174,30 @@ def test_fixation_mapping_uses_latest_prior_snapshot_and_preserves_quality_bound
 def test_non_gaze_empty_path_has_no_fabricated_results():
     assert detect_fixations([]) == []
     assert map_gaze_to_aois([], []) == []
+
+
+def test_study_and_aoi_version_filters_prevent_cross_study_geometry_leakage():
+    sample_records = records([provider_sample("sample", 100, x=25, y=25)])
+    study_a = {
+        **snapshot([rectangle("aoi-a", 0, 0, 50, 50)]),
+        "schema_version": "2.0.0",
+        "snapshot_id": "geometry-a",
+        "study_id": "study-a",
+        "aoi_set_version": "aoi-a",
+    }
+    study_b = {
+        **snapshot([rectangle("aoi-b", 0, 0, 50, 50)]),
+        "schema_version": "2.0.0",
+        "snapshot_id": "geometry-b",
+        "study_id": "study-b",
+        "aoi_set_version": "aoi-b",
+    }
+    assignment = map_gaze_to_aois(
+        sample_records,
+        [study_b, study_a],
+        study_id="study-a",
+        aoi_set_version="aoi-a",
+    )[0]
+    assert assignment.aoi_id == "aoi-a"
+    assert assignment.snapshot_id == "geometry-a"
+    assert map_gaze_to_aois(sample_records, [study_b], study_id="study-a", aoi_set_version="aoi-a")[0].aoi_id == "aoi.unresolved"

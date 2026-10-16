@@ -206,11 +206,14 @@ def _snapshots(snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for snapshot in snapshots:
         if not isinstance(snapshot, dict) or not required.issubset(snapshot):
             continue
-        if snapshot["schema_version"] != "1.0.0":
+        if snapshot["schema_version"] not in {"1.0.0", "2.0.0"}:
             continue
         snapshot_id = snapshot["snapshot_id"]
         session_id = snapshot["session_id"]
         if not isinstance(snapshot_id, str) or not snapshot_id or not isinstance(session_id, str) or not session_id:
+            continue
+        study_id = snapshot.get("study_id")
+        if snapshot["schema_version"] == "2.0.0" and (not isinstance(study_id, str) or not study_id):
             continue
         if snapshot_id in seen:
             raise DuplicateSampleIdentity(f"duplicate snapshot_id: {snapshot_id!r}")
@@ -225,18 +228,34 @@ def _snapshots(snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         if width <= 0 or height <= 0 or zoom <= 0 or not isinstance(snapshot["rectangles"], list):
             continue
-        normalized.append({**snapshot, "_captured_at": captured_at, "_width": width, "_height": height})
+        normalized.append(
+            {
+                **snapshot,
+                "_captured_at": captured_at,
+                "_width": width,
+                "_height": height,
+                "_study_id": study_id,
+            }
+        )
         seen.add(snapshot_id)
     return sorted(normalized, key=lambda snapshot: (snapshot["_captured_at"], snapshot["snapshot_id"]))
 
 
 def _snapshot_for(
-    snapshots: list[dict[str, Any]], session_id: str, at: datetime
+    snapshots: list[dict[str, Any]],
+    session_id: str,
+    at: datetime,
+    *,
+    study_id: str | None = None,
+    aoi_set_version: str | None = None,
 ) -> dict[str, Any] | None:
     eligible = [
         snapshot
         for snapshot in snapshots
-        if snapshot["session_id"] == session_id and snapshot["_captured_at"] <= at
+        if snapshot["session_id"] == session_id
+        and snapshot["_captured_at"] <= at
+        and (study_id is None or snapshot["_study_id"] == study_id)
+        and (aoi_set_version is None or snapshot["aoi_set_version"] == aoi_set_version)
     ]
     return eligible[-1] if eligible else None
 
@@ -256,9 +275,13 @@ def _resolve_aoi(snapshot: dict[str, Any], x_normalized: float, y_normalized: fl
 
 
 def map_gaze_to_aois(
-    records: list[dict[str, Any]], geometry_snapshots: list[dict[str, Any]]
+    records: list[dict[str, Any]],
+    geometry_snapshots: list[dict[str, Any]],
+    *,
+    study_id: str | None = None,
+    aoi_set_version: str | None = None,
 ) -> list[AOIAssignment]:
-    """Map eligible canonical samples using the latest prior geometry snapshot."""
+    """Map samples using the latest prior study/version-matched snapshot."""
 
     ordered = _validated_records(records)
     snapshots = _snapshots(geometry_snapshots)
@@ -269,7 +292,13 @@ def map_gaze_to_aois(
             assignments.append(AOIAssignment(record["sample_id"], "aoi.unresolved", None, reason))
             continue
         at = _timestamp(record["occurred_at"], "occurred_at")
-        snapshot = _snapshot_for(snapshots, record["session_id"], at)
+        snapshot = _snapshot_for(
+            snapshots,
+            record["session_id"],
+            at,
+            study_id=study_id,
+            aoi_set_version=aoi_set_version,
+        )
         if snapshot is None:
             assignments.append(AOIAssignment(record["sample_id"], "aoi.unresolved", None, "aoi.unresolved"))
             continue
@@ -289,13 +318,22 @@ def map_fixations_to_aois(
     fixations: list[Fixation],
     session_id: str,
     geometry_snapshots: list[dict[str, Any]],
+    *,
+    study_id: str | None = None,
+    aoi_set_version: str | None = None,
 ) -> list[AOIAssignment]:
-    """Map fixation centroids using the latest prior geometry snapshot."""
+    """Map fixation centroids using a study/version-matched snapshot."""
 
     snapshots = _snapshots(geometry_snapshots)
     assignments: list[AOIAssignment] = []
     for fixation in fixations:
-        snapshot = _snapshot_for(snapshots, session_id, _timestamp(fixation.start_at, "start_at"))
+        snapshot = _snapshot_for(
+            snapshots,
+            session_id,
+            _timestamp(fixation.start_at, "start_at"),
+            study_id=study_id,
+            aoi_set_version=aoi_set_version,
+        )
         if snapshot is None:
             assignments.append(AOIAssignment(fixation.fixation_id, "aoi.unresolved", None, "aoi.unresolved"))
             continue

@@ -25,7 +25,7 @@ All items start planned until implementation and acceptance tests prove otherwis
 | S | Canonical GazeRecord normalization | P3 | normalized fixtures |
 | T | Calibration and gaze quality | P3 | quality tests |
 | U | Fixations and gaze-to-AOI mapping | P3 | synthetic trace tests |
-| V | TTFF, dwell, revisits, transitions, entropy, scan paths | P3 | metric tests |
+| V | TTFF, dwell, revisits, transitions, entropy, scan paths | P3 | metric tests | implemented |
 | W | Non-gaze timing/interaction/survey features | P3 | camera-denied tests |
 | X | Reusable universal FeatureRecords | P3 | schema/reproducibility tests |
 | Y | Descriptive statistics | P4 | known-answer tests |

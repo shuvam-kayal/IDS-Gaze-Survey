@@ -25,7 +25,7 @@ Each decision is classified as one of:
 | Study | `study_id` | P2 control plane | A study belongs to one Experience and has immutable published config versions. |
 | Participant | `participant_id` | Session/bootstrap service | Optional pseudonymous identifier; never a verified real-world identity. |
 | Session | `session_id` | Session/bootstrap service after consent | One browser participation session; may contain multiple eligible Studies. |
-| Trial | `trial_id` | P1 runtime | Carries trial lifecycle context in event payloads where applicable. |
+| Trial | `(session_id, study_id, trial_id)` | P1 runtime | Study-scoped trial lifecycle context; carried by `trial.exposure_started` payloads. |
 | Question | `question_id` | P2 configuration | Stable identity within a versioned QuestionConfig. |
 | Question response | `response_id` | P1 runtime | Generated for a submitted response; must retain question and version context. |
 | Event | `(session_id, event_id)` | P1 runtime | `event_id` is stable across retries of the same logical event. |
@@ -397,11 +397,12 @@ consent UX or P4's FeatureRecord consumer.
 - Origin is the top-left of the visible viewport; x increases rightward and y
   increases downward.
 - P1 resolves live AOI rectangles in the same viewport coordinate space and
-  emits a [`GeometrySnapshot`](../../contracts/schemas/geometry-snapshot.v1.schema.json)
-  when layout, scroll, resize, zoom, or reflow changes. The snapshot carries
-  `snapshot_id`, `session_id`, UTC `captured_at`, `aoi_set_version`, viewport
-  width/height, scroll offsets, zoom, and timestamp-independent AOI rectangles
-  in viewport pixels.
+  emits a [`GeometrySnapshot`](../../contracts/schemas/geometry-snapshot.v2.schema.json)
+  when layout, scroll, resize, zoom, or reflow changes. The multi-study v2
+  snapshot carries `snapshot_id`, `session_id`, `study_id`, UTC `captured_at`,
+  `aoi_set_version`, viewport width/height, scroll offsets, zoom, and
+  timestamp-independent AOI rectangles in viewport pixels. The v1 snapshot is
+  retained for single-study compatibility only.
 - P2 owns AOI definitions and `aoi_set_version`; P1 owns live geometry;
   P3 owns timestamped mapping.
 - A rectangle uses left/top inclusive and right/bottom exclusive boundaries.
@@ -424,8 +425,12 @@ The first reusable baseline is `feature_algorithm_version = gaze-baseline-1`:
   coordinates: at least 3 valid samples spanning at least 100 ms and with
   `max(x)-min(x) <= 0.05` and `max(y)-min(y) <= 0.05`.
 - Samples crossing a gap or invalid run do not bridge fixations.
-- TTFF is elapsed milliseconds from the pinned trial/exposure start event to
+- TTFF is elapsed milliseconds from the pinned `trial.exposure_started` event
+  (one study ID and a `(session_id, study_id, trial_id)` identity) to
   the first qualifying fixation in the requested AOI.
+- The event-specific shape is frozen by
+  [`trial-exposure-start.v1.schema.json`](../../contracts/schemas/trial-exposure-start.v1.schema.json);
+  it specializes the unchanged EventEnvelope and requires `payload.trial_id`.
 - Dwell is the sum of qualifying fixation durations assigned to an AOI;
   invalid gaps are excluded, not interpolated.
 - A revisit is a new qualifying fixation in the same AOI after at least one

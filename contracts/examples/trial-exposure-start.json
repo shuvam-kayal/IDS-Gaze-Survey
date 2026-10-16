@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt-trial-exposure-start-0001",
+  "experience_id": "exp-demo-store",
+  "study_ids": ["study-product-evaluation"],
+  "session_id": "session-synthetic-0001",
+  "participant_id": null,
+  "event_type": "trial.exposure_started",
+  "occurred_at": "2026-01-01T10:00:00Z",
+  "payload": {"trial_id": "trial-study-product-0001"}
+}
