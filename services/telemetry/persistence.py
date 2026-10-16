@@ -107,9 +107,27 @@ class TelemetryRepository:
                 ingested_at=utc_now(),
                 fingerprint=fingerprint,
             )
-            inserted = db.execute(
-                statement.on_conflict_do_nothing(index_elements=["session_id", "event_id"])
-            ).rowcount
+            inserted_row = db.execute(
+                statement.on_conflict_do_nothing(
+                    index_elements=["session_id", "event_id"]
+                ).returning(TelemetryEvent.event_id, TelemetryEvent.ingested_at)
+            ).first()
+            if inserted_row is not None:
+                inserted_event_id, ingested_at = inserted_row
+                processing = db.get(SessionProcessing, event["session_id"])
+                if processing is None:
+                    db.add(
+                        SessionProcessing(
+                            session_id=event["session_id"],
+                            state="open",
+                            updated_at=ingested_at,
+                        )
+                    )
+                elif processing.state == "complete":
+                    processing.state = "open"
+                    processing.updated_at = ingested_at
+                return IngestionResult(inserted_event_id, False, ingested_at)
+
             existing = db.scalar(
                 select(TelemetryEvent).where(
                     TelemetryEvent.session_id == event["session_id"],
@@ -118,23 +136,9 @@ class TelemetryRepository:
             )
             if existing is None:
                 raise RuntimeError("telemetry event disappeared during ingestion")
-            if not inserted:
-                if existing.fingerprint != fingerprint:
-                    raise IdentityConflict(f"event identity conflict for {event['event_id']!r}")
-                return IngestionResult(existing.event_id, True, existing.ingested_at)
-
-            ingested_at = existing.ingested_at
-            processing = db.get(SessionProcessing, event["session_id"])
-            if processing is None:
-                db.add(
-                    SessionProcessing(
-                        session_id=event["session_id"], state="open", updated_at=ingested_at
-                    )
-                )
-            elif processing.state == "complete":
-                processing.state = "open"
-                processing.updated_at = ingested_at
-            return IngestionResult(event["event_id"], False, ingested_at)
+            if existing.fingerprint != fingerprint:
+                raise IdentityConflict(f"event identity conflict for {event['event_id']!r}")
+            return IngestionResult(existing.event_id, True, existing.ingested_at)
 
     def list_events(self, session_id: str, *, study_id: str | None = None) -> list[dict[str, Any]]:
         with self.sessions() as db:

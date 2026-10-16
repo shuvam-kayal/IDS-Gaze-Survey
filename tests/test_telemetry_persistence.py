@@ -15,7 +15,10 @@ from services.telemetry.persistence import (
 
 DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
-    "postgresql+psycopg://attention:attention@localhost:5432/attention",
+    os.environ.get(
+        "DATABASE_URL",
+        "postgresql+psycopg://attention:attention@localhost:5432/attention?connect_timeout=5",
+    ),
 )
 
 
