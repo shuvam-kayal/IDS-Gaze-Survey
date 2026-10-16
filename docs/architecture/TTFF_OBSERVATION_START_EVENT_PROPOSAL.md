@@ -38,6 +38,12 @@ The proposal is constrained by these existing decisions:
 - No existing contract defines `exposure_id`, and no existing fixture defines
   a trial/exposure-start event.
 
+The existing contracts also do not define whether `trial_id` is unique within
+one session, one study, or a wider scope. The freeze identifies and generates
+it in the P1 runtime, but does not state whether a trial belongs to exactly one
+study or can be shared by several studies. This is a real cross-owner gap, not
+something P3 can infer from the identifier shape.
+
 ## Proposed semantics
 
 ### Meaning and timing
@@ -77,10 +83,25 @@ generator, relationship, or contract. If the P1 runtime later distinguishes
 multiple exposures within one trial, that must be introduced as a separately
 reviewed identifier with an explicit relationship to `trial_id`.
 
-The envelope's `study_ids` remains the authoritative study context. A session
-can contain multiple studies, so P3 evaluates the same start timestamp
-against each applicable study-scoped FeatureRecord rather than inventing a
-single study assignment.
+The envelope's `study_ids` remains the authoritative study context. However,
+that array alone is insufficient to select one study-scoped FeatureRecord when
+the same trial is shared by multiple studies, because each eligible study may
+have a different `aoi_set_version` and the FeatureRecord schema has exactly one
+`study_id`.
+
+Recommended minimal resolution: define the proposed start event as
+study-scoped and require exactly one entry in its existing `study_ids` array.
+That selects the FeatureRecord's `study_id` without adding a new field. Under
+this recommendation, P1 must either create a distinct `trial_id` per study or
+explicitly define a shared trial as producing separate study-scoped start
+events. If the product requires one shared trial event for several studies,
+the event contract must instead define an explicit per-study association; P3
+must not guess which AOI set applies.
+
+The current model does not establish this recommendation. P1 owns trial
+lifecycle semantics; P2 owns study configuration and AOI-set versions; P3
+owns the derived FeatureRecord selection. P1 and P2 must approve the trial
+scope, with P3 and P4 reviewing the resulting metric interface.
 
 ### Timestamp
 
@@ -106,11 +127,27 @@ The proposed association is:
    `aoi_set_version` at mapping time.
 
 The start event does not carry an `aoi_set_version` or a target AOI in this
-minimal proposal. The metric request supplies the requested `aoi_id`; P3 must
-validate it against the applicable AOI configuration/version and use the
-timestamped geometry snapshots already defined for mapping. A future contract
-may add explicit exposure-to-AOI targeting if the product requires it, but it
-is not justified by the current domain model.
+minimal proposal. The selected study's pinned bootstrap/configuration supplies
+the expected `aoi_set_version`; the metric request supplies the requested
+`aoi_id`; P3 must validate both against the study-scoped AOI configuration.
+
+There is a second concrete gap in the current geometry contract. The frozen
+`GeometrySnapshot` contains `session_id` and one `aoi_set_version`, but no
+`study_id`. Slice U's `_snapshot_for` in
+`services/gaze_engine/fixation.py` therefore selects the latest prior snapshot
+by session and time only. In a multi-study session it can select a snapshot
+for the wrong study/AOI set. Matching only `aoi_set_version` at a higher layer
+is not a complete identity guarantee because the contracts do not state that
+AOI-set version strings are globally unique across studies.
+
+Recommended minimal contract resolution: add required `study_id` to a new
+version of `GeometrySnapshot` (a required field is not a backward-compatible
+patch to the current `additionalProperties: false` v1 schema). The mapping
+interface should then require the requested `study_id` and expected
+`aoi_set_version`, filtering by session, study, version, and timestamp. Until
+that change is approved, P3 may map only a single-study session or an
+explicitly pre-filtered snapshot collection; it must not claim correct
+multi-study mapping.
 
 ## Lifecycle and error handling
 
@@ -139,8 +176,10 @@ is not justified by the current domain model.
 
 The frozen FeatureRecord schema permits arbitrary JSON values inside
 `features`, while `quality.missingness` is the existing reason-code array. The
-proposal is to represent a metric as an object when its value needs provenance
-or missingness, for example:
+The existing non-gaze implementation uses scalar feature values and puts the
+session-level gaze reason in `quality.missingness`. The following per-metric
+object is therefore a proposed convention requiring P3 implementation
+agreement and P4 consumer approval; it is not currently frozen:
 
 ```json
 {
@@ -155,12 +194,25 @@ or missingness, for example:
 }
 ```
 
-The example is illustrative and is not a frozen contract. A measured zero is
-represented as numeric `0`; an unavailable or undefined metric is represented
-as `null` with a reason. Candidate reason codes requiring owner agreement are
-`gaze.observation_start_missing`, `gaze.no_qualifying_fixation`, and
-`gaze.metric_undefined`. Existing standard camera and sample reasons remain
-those listed in `INTEGRATION_FREEZE.md §8`.
+The intended semantic distinction is:
+
+- Measured zero: numeric `0`, with no missingness reason for that metric.
+- Valid nonzero result: the measured numeric value.
+- Unavailable result: `value: null` plus a reason such as
+  `gaze.observation_start_missing` or `gaze.no_qualifying_fixation`.
+- Undefined metric: `value: null` plus `gaze.metric_undefined`, for example
+  entropy with fewer than two valid AOI observations as defined by the freeze.
+- Gaze unavailable: `value: null`, with the existing session-level reason such
+  as `gaze.permission_denied`, `gaze.no_samples`, or `gaze.provider_failure`,
+  and `modality: non_gaze_only` where the FeatureRecord contains only non-gaze
+  features.
+
+The candidate metric reason codes and the object convention require owner
+agreement. They must not be treated as additions to the frozen standard list
+in `INTEGRATION_FREEZE.md §8` until the contract-change process approves them.
+If the team chooses scalar metric fields instead, the same null-versus-zero
+semantics and reason provenance must still be preserved through the approved
+FeatureRecord convention.
 
 The same representation should be used consistently for dwell, revisits,
 transitions, entropy, and scan paths when their input is absent or undefined.
@@ -192,24 +244,32 @@ The following is a proposal example only; it is not a contract fixture:
 
 Required approvals:
 
-- P1: semantic timing, event name, emission point, trial lifecycle, and
-  duplicate/multiple-start behavior.
+- P1: semantic timing, event name, emission point, trial lifecycle, `trial_id`
+  uniqueness/scope, whether a trial belongs to one study or can be shared,
+  and duplicate/multiple-start behavior.
 - P3: TTFF input interface, late-event invalidation, metric-level missingness,
-  and feature algorithm metadata.
-- P2: confirmation that the study/config/AOI-set association is compatible
-  with immutable published configuration and multi-study sessions.
+  feature algorithm metadata, and the study/version filters used by mapping.
+- P2: confirmation that the study/config/AOI-set association and proposed
+  `GeometrySnapshot` study scope are compatible with immutable published
+  configuration and multi-study sessions.
 - P4: consumer acceptance of nullable metric objects, reason codes, units,
   windows, and limitations.
 
 After approval, the smallest coordinated change is:
 
-1. Add or update the versioned lifecycle event contract and TypeScript type
+1. Resolve and document `trial_id` scope and whether start events are
+   study-scoped or shared.
+2. Add or update the versioned lifecycle event contract and TypeScript type
    according to the approved event name and payload.
-2. Add one proposal-derived event fixture and contract tests, including exact
-   retry, late arrival, missing start, and duplicate/conflicting behavior.
-3. Update the integration freeze or its linked lifecycle contract through the
-   documented contract-change process.
-4. Only then implement Slice V metric calculations and tests.
+3. Version the geometry snapshot contract if required study scope is approved,
+   then update the P1 geometry producer and P3 mapping interface through the
+   affected-owner process.
+4. Add proposal-derived event and geometry fixtures plus contract tests,
+   including exact retry, late arrival, missing start, wrong-study snapshot,
+   and duplicate/conflicting behavior.
+5. Approve the metric missingness convention and update the integration freeze
+   or linked contracts through the documented contract-change process.
+6. Only then implement Slice V metric calculations and tests.
 
 No schema, implementation, migration, API, or test changes are made by this
 proposal.
