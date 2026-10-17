@@ -187,8 +187,8 @@ multi-study mapping.
 
 ### Trial isolation implementation boundary
 
-The production metric path accepts a validated `TrialObservationContext` from
-the association contract. Fixations and AOI assignments produced with that
+The production metric path requires a validated `TrialObservationContext` from
+the association contract and rejects calls without one. Fixations and AOI assignments produced with that
 context retain the same study/trial/version identity. Samples outside the
 start-inclusive/end-exclusive window are rejected by association validation;
 fixations are also checked against the context before metrics are calculated.

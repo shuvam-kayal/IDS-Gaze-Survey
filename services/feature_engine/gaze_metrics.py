@@ -170,17 +170,16 @@ def compute_gaze_metrics(
     with at least two observations.
     """
 
+    if observation_context is None:
+        raise GazeNormalizationError(
+            "observation_context is required for production gaze metrics"
+        )
     if observation_context is not None and (
         observation_context.session_id != session_id
         or observation_context.study_id != study_id
         or observation_context.aoi_set_version != aoi_set_version
     ):
         raise GazeNormalizationError("requested metric context does not match observation context")
-    if observation_context is None and any(
-        fixation.session_id is not None or fixation.study_id is not None or fixation.trial_id is not None
-        for fixation in fixations
-    ):
-        raise GazeNormalizationError("observation_context is required for contextualized fixations")
     pairs = _ordered_pairs(fixations, assignments, observation_context)
     start_error: str | None = None
     if isinstance(start_event, list):
@@ -193,6 +192,14 @@ def compute_gaze_metrics(
         if observation_context is not None and start_trial_id != observation_context.trial_id:
             raise GazeNormalizationError("start_event trial_id does not match observation context")
         start_time = _timestamp(start_event["occurred_at"], "start_event.occurred_at")
+        if start_time != observation_context.start:
+            raise GazeNormalizationError(
+                "start_event occurred_at does not match observation context window_start"
+            )
+    if window_start is not None and _timestamp(window_start, "window_start") != observation_context.start:
+        raise GazeNormalizationError("window_start does not match observation context")
+    if window_end is not None and _timestamp(window_end, "window_end") != observation_context.end:
+        raise GazeNormalizationError("window_end does not match observation context")
     lower_bound = observation_context.start if observation_context else (_timestamp(window_start, "window_start") if window_start else start_time)
     upper_bound = observation_context.end if observation_context else (_timestamp(window_end, "window_end") if window_end else None)
     if lower_bound is not None and upper_bound is not None and upper_bound <= lower_bound:
@@ -305,6 +312,7 @@ def compute_gaze_metrics(
     if not pairs and not availability_reason:
         scan_path = []
         empty_reason = NO_QUALIFYING_OBSERVATIONS if observation_context else NO_SAMPLES
+        dwell_value = None
         scan_reason = empty_reason
         transition_reason = empty_reason
         revisit_reason = empty_reason
