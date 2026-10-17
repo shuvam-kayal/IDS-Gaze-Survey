@@ -5,9 +5,14 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
-    "test": "node --test test/webgazer-adapter.test.js"
+    "test": "node --test test/webgazer-adapter.test.js",
+    "build:smoke": "esbuild src/browser-smoke-entry.js --bundle --format=esm --platform=browser --outfile=smoke-test/dist/app.js",
+    "serve:smoke": "node smoke-test/server.mjs"
   },
   "dependencies": {
     "webgazer": "3.5.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.9"
   }
 }

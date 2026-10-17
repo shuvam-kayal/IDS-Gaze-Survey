@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>P3 WebGazer provider smoke test</title>
+    <style>
+      body { font: 16px system-ui, sans-serif; margin: 2rem; max-width: 48rem; }
+      code, pre { background: #f2f2f2; padding: .25rem; }
+      .panel { border: 1px solid #bbb; border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
+      button { margin: .5rem .5rem .5rem 0; padding: .5rem .8rem; }
+      #status { font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>P3 WebGazer provider smoke test</h1>
+    <p><strong>Provider-only manual test.</strong> This page is not the P1 participant runtime, does not submit data, and does not persist or upload video, frames, or participant data.</p>
+    <section class="panel">
+      <label><input id="consent" type="checkbox"> I explicitly authorize this local smoke test to request webcam access.</label>
+      <div>
+        <button id="start" type="button" disabled>Start capture</button>
+        <button id="stop" type="button" disabled>Stop</button>
+      </div>
+      <p>Status: <span id="status">idle</span></p>
+      <p>Viewport: <code id="viewport"></code></p>
+      <p>Temporary sample count: <code id="count">0</code></p>
+      <pre id="prediction">No prediction received yet.</pre>
+    </section>
+    <p>WebGazer startup is not evidence of calibration or accuracy. Confidence remains null and the existing P3 quality rules apply.</p>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

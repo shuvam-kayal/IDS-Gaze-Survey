@@ -42,14 +42,48 @@ two-study trial, AOI-version, interaction, survey, viewport, consent, and
 prediction inputs. It never accesses a webcam and must not be used as
 participant data.
 
-## Manual browser check (not performed here)
+## Manual browser smoke test
 
-After the P1 bridge is approved, run the package from a secure origin
-(`https://...` or `http://localhost`), call `createWebGazerAdapter()`, and
-start it only after the consent UI resolves with `consent_granted: true`.
-Observe `initializing` then `ready`, perform the approved calibration and
-interaction sequence, verify ProviderSamples contain viewport-pixel values and
-null confidence, call `stop()`, and verify `stopped` plus listener cleanup.
-Repeat with denied permission and an interrupted stream; verify
-`gaze.permission_denied` or `gaze.capture_interrupted` and a non-gaze-only
-FeatureRecord. No manual browser test was performed as part of this change.
+This is a provider-only smoke test, not the final P1 integration. It uses the
+real locally installed WebGazer package and requests the webcam only after the
+checkbox and button are used. It does not send data to the server or persist
+diagnostic samples.
+
+From PowerShell at the repository root:
+
+```powershell
+cd C:\Projects\IDS-Gaze-Survey
+npm install --prefix .\packages\gaze-provider-webgazer --include=dev
+npm run build:smoke --prefix .\packages\gaze-provider-webgazer
+npm run serve:smoke --prefix .\packages\gaze-provider-webgazer
+```
+
+Keep that terminal running, then open `http://localhost:4173/` in a supported
+browser. `localhost` is the secure browser origin used for this local test.
+When finished, return to the server terminal and press `Ctrl+C`. The build
+bundles the installed `webgazer@3.5.3`; it does not use a CDN or mock API.
+
+Manual cases and pass observations:
+
+1. Leave the checkbox clear and press Start: capture remains stopped and the
+   status says consent is required.
+2. Check the consent box and press Start, then grant camera permission: status
+   progresses through `initializing` to `ready`; temporary sample count grows.
+3. For valid predictions, the diagnostic line shows finite viewport-pixel
+   coordinates, `confidence=null`, and no video/frame data is displayed or
+   transmitted.
+4. Deny the browser permission: status becomes unavailable with
+   `gaze.permission_denied`; no uncaught page error or capture loop remains.
+5. If the provider emits null/invalid predictions, samples remain invalid with
+   null coordinates and reason flags; `(0, 0)` is not a valid missing-value
+   substitute.
+6. Resize the browser while running: the displayed viewport changes and later
+   predictions continue using the new dimensions.
+7. Press Stop: the status becomes stopped, the count stops increasing, and a
+   second Stop does not create another listener or error.
+
+WebGazer startup is not proof of accurate gaze tracking or successful
+calibration. The current callback provides no per-sample confidence, so
+confidence remains null and the existing P3 quality boundary may mark the
+capture low quality. No manual browser test was performed as part of this
+change.
