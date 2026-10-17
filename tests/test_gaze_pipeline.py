@@ -12,7 +12,7 @@ from services.feature_engine.gaze_pipeline import (
     process_session_gaze,
     process_trial_gaze,
 )
-from services.gaze_engine.adapter import GazeNormalizationError
+from services.gaze_engine.adapter import GazeNormalizationError, ProviderSampleAdapter
 from services.gaze_engine.context import TrialObservationContext
 
 SESSION_ID = "session-pipeline-1"
@@ -118,6 +118,11 @@ def assert_feature_record_schema(record: dict) -> None:
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(record)
 
 
+def assert_schema(document: dict, filename: str) -> None:
+    schema = json.loads(Path("contracts/schemas").joinpath(filename).read_text())
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(document)
+
+
 def test_end_to_end_gaze_path_is_schema_valid_and_reproducible():
     samples = [provider_sample("s2", 200), provider_sample("s0", 0), provider_sample("s1", 100)]
     first = run(samples)
@@ -135,6 +140,23 @@ def test_end_to_end_gaze_path_is_schema_valid_and_reproducible():
 
 def test_synthetic_webgazer_provider_samples_reach_canonical_feature_pipeline():
     samples = json.loads((Path("fixtures/gaze/webgazer-provider-synthetic.json")).read_text())
+    for sample in samples:
+        assert_schema(sample, "provider-sample.v1.schema.json")
+    canonical = ProviderSampleAdapter().normalize_batch(
+        samples,
+        session_id=SESSION_ID,
+        viewport_width_px=100,
+        viewport_height_px=100,
+    )
+    for record in canonical:
+        assert_schema(record, "gaze-record.v1.schema.json")
+        assert record["confidence"] is None
+        assert "gaze.calibration_unverified" in record["quality_flags"]
+    assert {record["sample_id"] for record in canonical} == {
+        "mock-session-1:webgazer:0",
+        "mock-session-1:webgazer:1",
+        "mock-session-1:webgazer:2",
+    }
     record = run(samples)
     assert_feature_record_schema(record)
     assert record["modality"] == "gaze_and_non_gaze"
@@ -142,7 +164,33 @@ def test_synthetic_webgazer_provider_samples_reach_canonical_feature_pipeline():
     assert record["features"]["gaze.dwell_time_ms"]["missingness"] == "gaze.low_quality"
     assert record["quality"]["gaze_available"] is True
     assert "gaze.low_quality" in record["quality"]["missingness"]
+    assert record["quality"]["calibration_status"] == "not_required"
     assert "video" not in json.dumps(record).lower()
+
+
+def test_webgazer_missing_and_out_of_view_samples_never_become_plausible_gaze():
+    samples = json.loads((Path("fixtures/gaze/webgazer-provider-synthetic.json")).read_text())
+    missing = {**samples[0], "sample_id": "mock-session-1:webgazer:missing", "x_px": None, "y_px": None, "valid": False}
+    assert_schema(missing, "provider-sample.v1.schema.json")
+    normalized = ProviderSampleAdapter().normalize(
+        missing,
+        session_id=SESSION_ID,
+        viewport_width_px=100,
+        viewport_height_px=100,
+    )
+    assert normalized["valid"] is False
+    assert normalized["x_normalized"] is None
+    assert normalized["y_normalized"] is None
+    assert "gaze.coordinates_missing" in normalized["quality_flags"]
+
+    out_of_view = {**samples[0], "sample_id": "mock-session-1:webgazer:outside", "x_px": 101}
+    with pytest.raises(GazeNormalizationError, match="inside the viewport"):
+        ProviderSampleAdapter().normalize(
+            out_of_view,
+            session_id=SESSION_ID,
+            viewport_width_px=100,
+            viewport_height_px=100,
+        )
 
 
 def test_camera_denied_produces_non_gaze_record_without_fabricated_metrics():
