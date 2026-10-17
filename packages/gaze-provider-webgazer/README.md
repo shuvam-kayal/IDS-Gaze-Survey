@@ -90,3 +90,64 @@ calibration. The current callback provides no per-sample confidence, so
 confidence remains null and the existing P3 quality boundary may mark the
 capture low quality. No manual browser test was performed as part of this
 change.
+
+## WebGazer 3.5.3 implementation notes
+
+These notes are based on the installed source under
+`node_modules/webgazer/src/` (the package is pinned to `3.5.3`), especially
+`index.mjs`, `facemesh.mjs`, `params.mjs`, and the installed README. They are
+provider facts, not claims that this smoke page has measured accuracy.
+
+- `begin()` calls `navigator.mediaDevices.getUserMedia()` and then initializes
+  the video, FaceMesh tracker, prediction loop, and UI. It does not run a
+  separate automatic nine-point calibration procedure.
+- The loop calls the function registered by `setGazeListener(listener)` on
+  every prediction cycle. The callback receives `(prediction, elapsedTime)`;
+  `prediction` can be `null` when no usable tracker prediction is available.
+  The P3 adapter preserves that as an invalid sample with explicit missingness.
+- `init()` calls the internal `addMouseEventListeners()` automatically. The
+  public method exists, but this smoke page does not need to call it a second
+  time. Clicks and throttled mouse moves call `recordScreenPosition()` and add
+  training data to the active regression when eye features are available.
+- The default installed model is the `TFFaceMesh` tracker with the `ridge`
+  regression model. The regression is updated by those click/move training
+  observations. The default Kalman smoothing setting is separate from
+  calibration/training.
+- `saveDataAcrossSessions(false)` disables loading prior global data during
+  `begin()` and prevents click data from being written to the cross-session
+  store. It does not disable training during the current page session.
+- The built-in red point is controlled by `showPredictionPoints(true/false)`.
+  The source places it using a smoothed recent-prediction value and bounds it
+  to the viewport, so it is not a direct visualization of the raw callback
+  value. The smoke page disables that overlay and shows a separate green
+  marker driven only by the adapter callback.
+- WebGazer exposes `isReady()` for initialization state, but the inspected
+  source provides no validated calibration-success or per-sample accuracy
+  signal. The guided page therefore reports only `camera ready`,
+  `calibrating`, `capturing predictions`, and `calibration procedure
+  completed; accuracy not yet validated`.
+
+The guided procedure uses nine viewport-relative targets (corners, edge
+centers, and center) and three deliberate clicks per target. Three clicks is a
+repeatability choice for this manual diagnostic, not a WebGazer-required
+threshold and not an accuracy criterion. The target clicks provide the
+mouse/click training observations described above; they do not prove that
+eye-only predictions are accurate.
+
+Manual comparison procedure:
+
+1. Rebuild and serve the page, check consent, and press Start. Grant camera
+   permission. Before clicking any calibration target, move the mouse away and
+   leave it stationary for at least one second. Record the callback counts,
+   null count, finite count, and green-marker behavior while looking at several
+   positions. This is the pre-procedure qualitative observation.
+2. For each blue target, look directly at it and click it three times. Wait
+   for the next target after each set. The page reports `calibrating` and the
+   current target progress.
+3. After all nine targets, the page reports `capturing predictions` and
+   `calibration procedure completed; accuracy not yet validated`. Move the
+   mouse away, leave it stationary again, and look at several positions.
+4. Compare the green callback marker and finite/null counters with the first
+   observation. Do not use the browser cursor, target location, or a changing
+   non-null coordinate as an accuracy measurement. Restart calibration to
+   repeat the procedure, or press Stop to verify cleanup.
