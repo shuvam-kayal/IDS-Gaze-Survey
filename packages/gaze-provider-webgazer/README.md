@@ -61,7 +61,10 @@ npm run serve:smoke --prefix .\packages\gaze-provider-webgazer
 Keep that terminal running, then open `http://localhost:4173/` in a supported
 browser. `localhost` is the secure browser origin used for this local test.
 When finished, return to the server terminal and press `Ctrl+C`. The build
-bundles the installed `webgazer@3.5.3`; it does not use a CDN or mock API.
+bundles the installed `webgazer@3.5.3` and copies its pinned local FaceMesh
+runtime assets into the smoke-test directory; it does not use a CDN or mock
+API. The package test also starts the local server and checks that each copied
+runtime asset returns HTTP 200.
 
 Manual cases and pass observations:
 
