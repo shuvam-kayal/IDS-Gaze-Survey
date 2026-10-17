@@ -36,6 +36,10 @@ function providerReason(error) {
     : "gaze.provider_failure";
 }
 
+function externalStreamUnsupported() {
+  return new Error("gaze.external_stream_unsupported");
+}
+
 /**
  * Adapter around the small public WebGazer API used by this project.
  *
@@ -59,14 +63,33 @@ export class WebGazerAdapter {
   }
 
   async start(input) {
-    if (!input || input.consent_granted !== true) {
-      throw new Error("WebGazer start requires explicit consent_granted=true");
+    if (!input || typeof input !== "object") {
+      throw new Error("WebGazer start requires a ProviderAdapter input");
     }
     if (typeof input.session_id !== "string" || input.session_id.length === 0) {
       throw new Error("session_id must be a non-empty string");
     }
     if (typeof input.on_sample !== "function" || typeof input.on_status !== "function") {
       throw new Error("on_sample and on_status callbacks are required");
+    }
+    const testOnly = input.test_only === true;
+    if (testOnly) {
+      if (input.consent_granted !== true) {
+        throw new Error("test-only WebGazer start requires explicit consent_granted=true");
+      }
+    } else {
+      if (!input.camera_stream || typeof input.camera_stream.getTracks !== "function") {
+        throw new Error("ProviderAdapter input requires a consented camera_stream");
+      }
+      if (!input.initial_geometry || typeof input.initial_geometry !== "object") {
+        throw new Error("ProviderAdapter input requires initial_geometry");
+      }
+      // WebGazer 3.5.3 has no public API for supplying this stream. Do not
+      // call begin(), which would request a second camera stream, and do not
+      // call stop() on the P1-owned stream.
+      safeStatus(input.on_status, STATUS.INITIALIZING);
+      safeStatus(input.on_status, STATUS.UNAVAILABLE, "gaze.external_stream_unsupported");
+      throw externalStreamUnsupported();
     }
     if (this.active) {
       if (this.sessionId !== input.session_id) {

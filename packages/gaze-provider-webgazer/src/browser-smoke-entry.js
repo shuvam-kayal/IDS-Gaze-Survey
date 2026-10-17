@@ -159,6 +159,7 @@ async function startCapture() {
     }
     await adapter.start({
       session_id: "manual-webgazer-smoke-session",
+      test_only: true,
       consent_granted: true,
       on_sample: displaySample,
       on_status: (value, reason) => {

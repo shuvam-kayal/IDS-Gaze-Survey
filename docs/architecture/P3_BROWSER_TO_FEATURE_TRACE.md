@@ -64,6 +64,41 @@ not satisfy the frozen final P1 bridge. Resolving that requires an explicit
 P1/integrator decision about a supported provider initialization design; this
 slice does not start a second stream or change the P1 interface.
 
+## WebGazer 3.5.3 stream investigation
+
+The installed `node_modules/webgazer/src/index.mjs` provides the following
+source evidence:
+
+- Private `init(stream)` stores the argument in WebGazer's internal
+  `videoStream`, creates a video element, and assigns `videoElement.srcObject =
+  stream`.
+- Public `begin()` does not accept a stream argument. Unless static-video debug
+  mode is selected, it calls `navigator.mediaDevices.getUserMedia(...)` and
+  passes the newly obtained stream to private `init(stream)`.
+- Public `setVideoElementCanvas()` accepts a canvas, not a MediaStream. Public
+  `setStaticVideo()` accepts a video location for debug use, not an already
+  consented camera stream.
+- Public `end()` removes WebGazer DOM elements and pauses the loop, but the
+  source comments out `stopVideo()`. Public `stopVideo()` directly calls
+  `videoStream.getTracks()[0].stop()` and is therefore unsafe to call on a
+  stream owned by P1.
+
+There is consequently no verified public external-stream initialization path
+in the pinned package. Passing a stream through private `init()` would require
+bundler/runtime-specific access to a non-exported function and would be
+brittle across package updates. The adapter now rejects a frozen-contract
+start with `camera_stream` and `initial_geometry` using the explicit reason
+`gaze.external_stream_unsupported`; it does not call `begin()` and does not
+stop the supplied stream. The existing smoke page uses an explicit
+`test_only: true` mode, retaining its provider-only behavior and its own
+consent checkbox without presenting it as final P1 integration.
+
+Supported design options requiring P1/integrator approval are: adopt a
+provider/browser implementation that publicly accepts the P1 stream; maintain
+a reviewed WebGazer fork or wrapper that exposes stream injection and defines
+ownership-safe cleanup; or explicitly revise the boundary so this provider
+owns camera acquisition. None is silently selected here.
+
 ## Existing identity and lifecycle behavior
 
 - Provider samples use `sample_id` within a session/provider capture stream;
