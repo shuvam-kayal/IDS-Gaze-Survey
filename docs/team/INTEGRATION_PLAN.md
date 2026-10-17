@@ -13,3 +13,12 @@ including denied/interrupted camera. M5: access control, retention/deletion,
 accessibility, performance and deployment hardening.
 
 Integration is complete only when contract tests pass, retries are idempotent, outputs are versioned, fallback works, tests cover multi-study/AOI/missingness, results show modality/limitations and CI passes.
+
+P3 M2b end-to-end acceptance is exercised by
+`tests/test_gaze_pipeline.py`: provider samples flow through canonical
+normalization, quality, validated trial association, fixation detection,
+study/AOI-version-pinned mapping, metrics, and schema-valid FeatureRecord
+output. Camera-denied and empty-capture fallback paths are covered. The late
+event path reuses the existing persistence behavior that reopens a completed
+`SessionProcessing` scope; its PostgreSQL-backed test is skipped when the
+configured test database is unavailable.

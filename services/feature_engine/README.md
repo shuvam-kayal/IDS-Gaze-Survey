@@ -13,3 +13,10 @@ fixation dwell shares; and scan paths preserve unresolved observations while
 collapsing consecutive duplicates. Metric values are nullable objects with
 units, window, AOI-set version, algorithm version, and reason codes. Numeric
 zero is reserved for a measured zero.
+
+The M2b orchestration entry point is `gaze_pipeline.process_trial_gaze`. It
+requires a validated `TrialObservationContext`, keeps provider samples behind
+the existing adapter, validates the explicit association before fixation
+detection, pins AOI mapping to the requested study and AOI-set version, and
+builds the existing FeatureRecord. It does not persist raw video or invent
+gaze values when capture is unavailable.

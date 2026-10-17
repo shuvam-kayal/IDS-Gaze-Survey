@@ -361,10 +361,14 @@ def build_gaze_feature_record(
     gaze_available: bool = True,
     calibration_status: str | None = None,
     gaze_missingness_reason: str | None = None,
+    survey_completion_ratio: float | None = None,
 ) -> dict[str, Any]:
     """Build a schema-shaped FeatureRecord without changing its contract."""
 
-    feature_values = {**build_non_gaze_features(events), **metrics}
+    feature_values = {
+        **build_non_gaze_features(events, survey_completion_ratio=survey_completion_ratio),
+        **metrics,
+    }
     missingness = sorted(
         {
             value["missingness"]

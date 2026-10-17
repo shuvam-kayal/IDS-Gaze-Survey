@@ -105,6 +105,18 @@ def test_session_lifecycle_and_idempotent_deletion(repository):
         )
 
 
+def test_late_event_reopens_completed_processing_scope(repository):
+    session_id = f"session-{uuid4()}"
+    repository.ingest(event(session_id, "evt-close", "2026-01-01T10:00:02Z"))
+    repository.mark_session_closed(session_id)
+    repository.mark_complete(session_id)
+    repository.ingest(event(session_id, "evt-late", "2026-01-01T10:00:01Z"))
+    with repository.sessions() as db:
+        processing = db.get(SessionProcessing, session_id)
+        assert processing is not None
+        assert processing.state == "open"
+
+
 def test_retention_purges_old_events(repository):
     session_id = f"session-{uuid4()}"
     repository.ingest(event(session_id, "evt-1", "2026-01-01T10:00:00Z"))
