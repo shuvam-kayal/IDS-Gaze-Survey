@@ -17,6 +17,7 @@ from services.gaze_engine.fixation import (
     map_fixations_to_aois,
 )
 from services.gaze_engine.quality import GazeQualityAssessment, evaluate_gaze_quality
+from services.telemetry.ingestion import deduplicate_events
 
 DEFAULT_UNAVAILABLE_REASON = "gaze.unavailable"
 
@@ -63,6 +64,7 @@ def process_session_gaze(
     pinned = _validated_bootstrap(
         session_bootstrap, session_id=session_id, experience_id=experience_id
     )
+    validated_events = deduplicate_events(events)
     if not isinstance(study_trials, list):
         raise TypeError("study_trials must be an array")
     seen: set[str] = set()
@@ -82,7 +84,7 @@ def process_session_gaze(
         if trial.get("config_version") not in (None, assignment["config_version"]):
             raise ValueError("trial config version does not match the pinned study assignment")
         study_events = [
-            event for event in events
+            event for event in validated_events
             if isinstance(event, dict)
             and event.get("session_id") == session_id
             and isinstance(event.get("study_ids"), list)
@@ -112,6 +114,33 @@ def process_session_gaze(
             )
         )
     return results
+
+
+def process_persisted_session_gaze(
+    event_repository: Any,
+    study_trials: list[dict[str, Any]],
+    *,
+    session_bootstrap: dict[str, Any],
+    experience_id: str,
+    session_id: str,
+) -> list[dict[str, Any]]:
+    """Process events retrieved from the existing telemetry repository.
+
+    The repository supplies validated, durably ingested EventEnvelopes. Gaze
+    provider samples remain transient structured inputs to the P3 pipeline;
+    raw camera frames are neither accepted nor stored here.
+    """
+
+    if not hasattr(event_repository, "list_events"):
+        raise TypeError("event_repository must provide list_events")
+    events = event_repository.list_events(session_id)
+    return process_session_gaze(
+        study_trials,
+        session_bootstrap=session_bootstrap,
+        experience_id=experience_id,
+        session_id=session_id,
+        events=events,
+    )
 
 
 def process_trial_gaze(
@@ -154,6 +183,7 @@ def process_trial_gaze(
         observation_context.aoi_set_version,
     ) != (session_id, study_id, trial_id, aoi_set_version):
         raise ValueError("trial processing context does not match the requested identity")
+    events = deduplicate_events(events)
 
     records: list[dict[str, Any]]
     if not gaze_available:

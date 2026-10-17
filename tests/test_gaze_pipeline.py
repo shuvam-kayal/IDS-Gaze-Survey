@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
-from services.feature_engine.gaze_pipeline import process_session_gaze, process_trial_gaze
+from services.feature_engine.gaze_pipeline import (
+    process_persisted_session_gaze,
+    process_session_gaze,
+    process_trial_gaze,
+)
 from services.gaze_engine.adapter import GazeNormalizationError
 from services.gaze_engine.context import TrialObservationContext
 
@@ -78,8 +82,14 @@ def geometry() -> dict:
 
 def events() -> list[dict]:
     return [{
+        "schema_version": "1.0.0",
+        "event_id": "click-pipeline-1",
+        "experience_id": "experience-pipeline",
+        "study_ids": [STUDY_ID],
+        "session_id": SESSION_ID,
         "event_type": "interaction.click",
-        "payload": {"scroll_delta_px": 0},
+        "occurred_at": START,
+        "payload": {"target": "button"},
     }]
 
 
@@ -120,6 +130,7 @@ def test_end_to_end_gaze_path_is_schema_valid_and_reproducible():
     assert first["features"]["gaze.ttff_ms"]["value"] == 0
     assert first["features"]["gaze.dwell_time_ms"]["value"] == 200
     assert first["features"]["gaze.dwell_time_ms"]["window_end"] == END
+    assert "video" not in json.dumps(first).lower()
 
 
 def test_camera_denied_produces_non_gaze_record_without_fabricated_metrics():
@@ -130,6 +141,74 @@ def test_camera_denied_produces_non_gaze_record_without_fabricated_metrics():
     assert record["features"]["gaze.dwell_time_ms"]["value"] is None
     assert "gaze.permission_denied" in record["quality"]["missingness"]
     assert record["features"]["interaction.click_count"] == 1
+
+
+def test_interrupted_capture_preserves_non_gaze_processing_and_reason():
+    record = run([], gaze_available=False, missingness="gaze.capture_interrupted")
+    assert_feature_record_schema(record)
+    assert record["modality"] == "non_gaze_only"
+    assert record["features"]["gaze.dwell_time_ms"]["value"] is None
+    assert "gaze.capture_interrupted" in record["quality"]["missingness"]
+    assert record["features"]["interaction.click_count"] == 1
+
+
+def test_browser_event_validation_and_exact_retry_deduplication_are_preserved():
+    duplicate_events = events() * 2
+    first = process_trial_gaze(
+        [], experience_id="experience-pipeline", session_id=SESSION_ID, study_id=STUDY_ID,
+        trial_id=TRIAL_ID, aoi_set_version=AOI_VERSION, observation_context=context(),
+        geometry_snapshots=[], events=duplicate_events, start_event=None, requested_aoi_id="target",
+        gaze_available=False, gaze_missingness="gaze.permission_denied",
+    )
+    second = run([], gaze_available=False, missingness="gaze.permission_denied")
+    assert first == second
+    invalid = {"event_type": "interaction.click", "payload": {}}
+    with pytest.raises(ValueError, match="missing required fields"):
+        process_trial_gaze(
+            [], experience_id="experience-pipeline", session_id=SESSION_ID, study_id=STUDY_ID,
+            trial_id=TRIAL_ID, aoi_set_version=AOI_VERSION, observation_context=context(),
+            geometry_snapshots=[], events=[invalid], start_event=None, requested_aoi_id="target",
+            gaze_available=False, gaze_missingness="gaze.permission_denied",
+        )
+
+
+def test_persisted_event_repository_bridge_uses_existing_session_events():
+    class Repository:
+        def __init__(self, stored_events):
+            self.stored_events = stored_events
+            self.requested_session_id = None
+
+        def list_events(self, session_id):
+            self.requested_session_id = session_id
+            return self.stored_events
+
+    repository = Repository(events())
+    trials = [{
+        "study_id": STUDY_ID,
+        "trial_id": TRIAL_ID,
+        "observation_context": context(),
+        "provider_samples": [],
+        "geometry_snapshots": [],
+        "start_event": None,
+        "requested_aoi_id": "target",
+        "gaze_available": False,
+        "gaze_missingness": "gaze.permission_denied",
+    }]
+    result = process_persisted_session_gaze(
+        repository,
+        trials,
+        session_bootstrap=_bootstrap([{
+            "study_id": STUDY_ID,
+            "config_version": "config-pipeline",
+            "aoi_set_version": AOI_VERSION,
+            "question_set_version": "questions-pipeline",
+        }]),
+        experience_id="experience-pipeline",
+        session_id=SESSION_ID,
+    )
+    assert repository.requested_session_id == SESSION_ID
+    assert result[0]["features"]["interaction.click_count"] == 1
+    assert result[0]["modality"] == "non_gaze_only"
 
 
 def test_empty_capture_is_missing_not_a_measured_zero():

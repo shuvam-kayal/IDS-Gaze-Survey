@@ -25,3 +25,9 @@ For M3 sessions, `process_session_gaze` validates the existing bootstrap's
 eligible-study assignments and invokes that trial pipeline independently for
 each study. It filters shared EventEnvelope inputs by `study_ids` and never
 selects an unpinned configuration or AOI-set version.
+
+The M4 repository bridge is `process_persisted_session_gaze`. It reads
+validated EventEnvelopes through the existing telemetry repository and passes
+them to the M3 coordinator; provider samples remain structured, consented
+inputs to the adapter and raw video is neither accepted nor persisted. This is
+the P3 processing boundary, not a browser runtime or API endpoint.

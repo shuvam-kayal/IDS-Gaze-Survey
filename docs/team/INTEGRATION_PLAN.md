@@ -30,3 +30,15 @@ each study's pinned configuration/AOI-set version to the existing single-trial
 pipeline. P1 eligibility/lifecycle emission and P2 configuration publication
 remain upstream dependencies; this slice does not claim those workstreams are
 complete.
+
+The P3 M4 processing slice adds `gaze_pipeline.process_persisted_session_gaze`,
+which retrieves already validated EventEnvelopes from the existing telemetry
+repository and routes them through the M3 coordinator. The trial path validates
+browser-originated EventEnvelope shape, applies batch retry deduplication, and
+keeps consented ProviderSample inputs behind the existing adapter; raw camera
+frames are not accepted or persisted. Focused pipeline tests cover valid and
+invalid events, exact retries, interrupted and denied capture, multi-study
+isolation, deterministic reprocessing, and the absence of video data in the
+FeatureRecord. A real browser-to-result journey still depends on P1's browser
+permission/capture lifecycle and the API/result wiring; this P3 slice does not
+claim those components are implemented.
