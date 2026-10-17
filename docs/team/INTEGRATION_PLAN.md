@@ -22,3 +22,11 @@ output. Camera-denied and empty-capture fallback paths are covered. The late
 event path reuses the existing persistence behavior that reopens a completed
 `SessionProcessing` scope; its PostgreSQL-backed test is skipped when the
 configured test database is unavailable.
+
+The P3 M3 slice adds `gaze_pipeline.process_session_gaze`, which validates the
+existing SessionBootstrap assignments, sorts and processes one explicit trial
+per eligible study, filters EventEnvelope inputs by `study_ids`, and passes
+each study's pinned configuration/AOI-set version to the existing single-trial
+pipeline. P1 eligibility/lifecycle emission and P2 configuration publication
+remain upstream dependencies; this slice does not claim those workstreams are
+complete.

@@ -21,6 +21,99 @@ from services.gaze_engine.quality import GazeQualityAssessment, evaluate_gaze_qu
 DEFAULT_UNAVAILABLE_REASON = "gaze.unavailable"
 
 
+def _validated_bootstrap(bootstrap: dict[str, Any], *, session_id: str, experience_id: str) -> dict[str, dict[str, Any]]:
+    if not isinstance(bootstrap, dict) or bootstrap.get("schema_version") != "1.0.0":
+        raise ValueError("unsupported session bootstrap")
+    if bootstrap.get("session_id") != session_id or bootstrap.get("experience_id") != experience_id:
+        raise ValueError("session bootstrap context does not match processing request")
+    eligible = bootstrap.get("eligible_studies")
+    if not isinstance(eligible, list):
+        raise TypeError("session bootstrap eligible_studies must be an array")
+    by_id: dict[str, dict[str, Any]] = {}
+    required = {"study_id", "config_version", "aoi_set_version", "question_set_version"}
+    for study in eligible:
+        if not isinstance(study, dict) or not required.issubset(study):
+            raise ValueError("session bootstrap contains an invalid study assignment")
+        study_id = study["study_id"]
+        if not all(isinstance(study[field], str) and study[field] for field in required):
+            raise ValueError("session bootstrap study assignment contains invalid values")
+        if study_id in by_id:
+            raise ValueError("session bootstrap contains duplicate study assignments")
+        by_id[study_id] = study
+    return by_id
+
+
+def process_session_gaze(
+    study_trials: list[dict[str, Any]],
+    *,
+    session_bootstrap: dict[str, Any],
+    experience_id: str,
+    session_id: str,
+    events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Process multiple study-scoped trials from one bootstrap-scoped session.
+
+    Each item in ``study_trials`` owns its provider samples, context, geometry,
+    lifecycle start event, requested AOI, and camera state. Pinned versions are
+    taken from the existing SessionBootstrap contract and cannot be overridden
+    by a trial item. Events are filtered by their existing ``study_ids`` field.
+    Results are returned in deterministic study-id order.
+    """
+
+    pinned = _validated_bootstrap(
+        session_bootstrap, session_id=session_id, experience_id=experience_id
+    )
+    if not isinstance(study_trials, list):
+        raise TypeError("study_trials must be an array")
+    seen: set[str] = set()
+    results: list[dict[str, Any]] = []
+    for trial in sorted(study_trials, key=lambda item: item.get("study_id", "") if isinstance(item, dict) else ""):
+        if not isinstance(trial, dict) or not isinstance(trial.get("study_id"), str):
+            raise TypeError("study trial requires study_id")
+        study_id = trial["study_id"]
+        if study_id in seen:
+            raise ValueError("study trial inputs must be unique per study")
+        seen.add(study_id)
+        assignment = pinned.get(study_id)
+        if assignment is None:
+            raise ValueError(f"study {study_id!r} is not eligible in the session bootstrap")
+        if trial.get("aoi_set_version") not in (None, assignment["aoi_set_version"]):
+            raise ValueError("trial AOI-set version does not match the pinned study assignment")
+        if trial.get("config_version") not in (None, assignment["config_version"]):
+            raise ValueError("trial config version does not match the pinned study assignment")
+        study_events = [
+            event for event in events
+            if isinstance(event, dict)
+            and event.get("session_id") == session_id
+            and isinstance(event.get("study_ids"), list)
+            and study_id in event["study_ids"]
+        ]
+        results.append(
+            process_trial_gaze(
+                trial.get("provider_samples", []),
+                experience_id=experience_id,
+                session_id=session_id,
+                study_id=study_id,
+                trial_id=trial["trial_id"],
+                aoi_set_version=assignment["aoi_set_version"],
+                observation_context=trial["observation_context"],
+                geometry_snapshots=trial.get("geometry_snapshots", []),
+                events=study_events,
+                start_event=trial.get("start_event"),
+                requested_aoi_id=trial.get("requested_aoi_id"),
+                viewport_width_px=trial.get("viewport_width_px"),
+                viewport_height_px=trial.get("viewport_height_px"),
+                gaze_available=trial.get("gaze_available", True),
+                gaze_missingness=trial.get("gaze_missingness"),
+                calibration_status=trial.get("calibration_status", "not_required"),
+                feature_set_version=trial.get("feature_set_version", "1.0.0"),
+                config_version=assignment["config_version"],
+                survey_completion_ratio=trial.get("survey_completion_ratio"),
+            )
+        )
+    return results
+
+
 def process_trial_gaze(
     provider_samples: list[dict[str, Any]],
     *,
@@ -111,6 +204,9 @@ def process_trial_gaze(
         if metrics_available
         else []
     )
+    if metrics_available and fixations and not any(assignment.snapshot_id for assignment in assignments):
+        metrics_available = False
+        quality_reason = "gaze.geometry_unavailable"
     metrics = compute_gaze_metrics(
         fixations,
         assignments,

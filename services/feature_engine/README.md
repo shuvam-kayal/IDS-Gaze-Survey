@@ -20,3 +20,8 @@ the existing adapter, validates the explicit association before fixation
 detection, pins AOI mapping to the requested study and AOI-set version, and
 builds the existing FeatureRecord. It does not persist raw video or invent
 gaze values when capture is unavailable.
+
+For M3 sessions, `process_session_gaze` validates the existing bootstrap's
+eligible-study assignments and invokes that trial pipeline independently for
+each study. It filters shared EventEnvelope inputs by `study_ids` and never
+selects an unpinned configuration or AOI-set version.

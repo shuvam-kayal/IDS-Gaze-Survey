@@ -44,3 +44,9 @@ provider-to-FeatureRecord gaze path, deterministic reordering, camera denial,
 and empty capture. `tests/test_telemetry_persistence.py` records the existing
 late-event reopening behavior; execution requires the configured PostgreSQL
 test database.
+
+P3 M3 acceptance evidence: `tests/test_gaze_pipeline.py` covers two eligible
+studies in one session, study-specific event filtering, pinned AOI/configuration
+versions, different trial windows, partial camera availability, deterministic
+result ordering, and safe rejection of version mismatches. P1/P2 eligibility,
+bootstrap issuance, and survey consolidation remain cross-owner dependencies.
