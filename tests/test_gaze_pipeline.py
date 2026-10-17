@@ -133,6 +133,18 @@ def test_end_to_end_gaze_path_is_schema_valid_and_reproducible():
     assert "video" not in json.dumps(first).lower()
 
 
+def test_synthetic_webgazer_provider_samples_reach_canonical_feature_pipeline():
+    samples = json.loads((Path("fixtures/gaze/webgazer-provider-synthetic.json")).read_text())
+    record = run(samples)
+    assert_feature_record_schema(record)
+    assert record["modality"] == "gaze_and_non_gaze"
+    assert record["features"]["gaze.dwell_time_ms"]["value"] is None
+    assert record["features"]["gaze.dwell_time_ms"]["missingness"] == "gaze.low_quality"
+    assert record["quality"]["gaze_available"] is True
+    assert "gaze.low_quality" in record["quality"]["missingness"]
+    assert "video" not in json.dumps(record).lower()
+
+
 def test_camera_denied_produces_non_gaze_record_without_fabricated_metrics():
     record = run([], gaze_available=False, missingness="gaze.permission_denied")
     assert_feature_record_schema(record)

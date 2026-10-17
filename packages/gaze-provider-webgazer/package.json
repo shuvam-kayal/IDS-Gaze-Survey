@@ -1,0 +1,13 @@
+{
+  "name": "@ids-gaze/webgazer-provider",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test test/webgazer-adapter.test.js"
+  },
+  "dependencies": {
+    "webgazer": "3.5.3"
+  }
+}
