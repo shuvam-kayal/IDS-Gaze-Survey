@@ -9,7 +9,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint, create_engine, select
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Integer,
+    String,
+    UniqueConstraint,
+    create_engine,
+    delete,
+    select,
+)
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -201,6 +210,25 @@ class TelemetryRepository:
             return bool(deleted)
 
     def purge_expired_events(self, *, now: datetime | None = None, retention_days: int = 30) -> int:
-        cutoff = (now or utc_now()) - timedelta(days=retention_days)
+        if not isinstance(retention_days, int) or isinstance(retention_days, bool):
+            raise TypeError("retention_days must be an integer")
+        if retention_days <= 0:
+            raise ValueError("retention_days must be positive")
+        reference_time = now or utc_now()
+        if reference_time.tzinfo is None or reference_time.utcoffset() != UTC.utcoffset(None):
+            raise ValueError("now must be timezone-aware UTC")
+        cutoff = reference_time.astimezone(UTC) - timedelta(days=retention_days)
         with self.sessions.begin() as db:
-            return db.query(TelemetryEvent).filter(TelemetryEvent.ingested_at < cutoff).delete()
+            expired_sessions = (
+                select(SessionProcessing.session_id)
+                .where(
+                    SessionProcessing.closed_at.is_not(None),
+                    SessionProcessing.closed_at < cutoff,
+                )
+            )
+            result = db.execute(
+                delete(TelemetryEvent).where(
+                    TelemetryEvent.session_id.in_(expired_sessions)
+                )
+            )
+            return result.rowcount or 0

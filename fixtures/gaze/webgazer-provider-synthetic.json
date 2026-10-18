@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": "1.0.0",
+    "provider": "webgazer",
+    "provider_version": "3.5.3",
+    "sample_id": "mock-session-1:webgazer:0",
+    "capture_time_ms": 0,
+    "occurred_at": "2026-01-01T10:00:00Z",
+    "x_px": 25,
+    "y_px": 25,
+    "valid": true,
+    "quality": {"confidence": null, "flags": ["gaze.calibration_unverified"]}
+  },
+  {
+    "schema_version": "1.0.0",
+    "provider": "webgazer",
+    "provider_version": "3.5.3",
+    "sample_id": "mock-session-1:webgazer:1",
+    "capture_time_ms": 100,
+    "occurred_at": "2026-01-01T10:00:00.100Z",
+    "x_px": 26,
+    "y_px": 25,
+    "valid": true,
+    "quality": {"confidence": null, "flags": ["gaze.calibration_unverified"]}
+  },
+  {
+    "schema_version": "1.0.0",
+    "provider": "webgazer",
+    "provider_version": "3.5.3",
+    "sample_id": "mock-session-1:webgazer:2",
+    "capture_time_ms": 200,
+    "occurred_at": "2026-01-01T10:00:00.200Z",
+    "x_px": 25,
+    "y_px": 26,
+    "valid": true,
+    "quality": {"confidence": null, "flags": ["gaze.calibration_unverified"]}
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "name": "@ids-gaze/webgazer-provider",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test test/webgazer-adapter.test.js test/smoke-assets.test.js test/calibration.test.js",
+    "build:smoke": "node smoke-test/copy-mediapipe-assets.mjs && esbuild src/browser-smoke-entry.js --bundle --format=esm --platform=browser --outfile=smoke-test/dist/app.js",
+    "serve:smoke": "node smoke-test/server.mjs"
+  },
+  "dependencies": {
+    "webgazer": "3.5.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.9"
+  }
+}

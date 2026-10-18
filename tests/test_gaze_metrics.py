@@ -10,11 +10,16 @@ from services.feature_engine.gaze_metrics import (
     compute_gaze_metrics,
 )
 from services.gaze_engine.adapter import GazeNormalizationError
+from services.gaze_engine.context import TrialObservationContext
 from services.gaze_engine.fixation import AOIAssignment, Fixation
 
 SESSION_ID = "session-metrics-0001"
 STUDY_ID = "study-a"
 AOI_VERSION = "aoi-a"
+OBSERVATION_CONTEXT = TrialObservationContext(
+    SESSION_ID, STUDY_ID, "trial-a-1", AOI_VERSION,
+    "2026-01-01T10:00:00Z", "2026-01-01T10:00:10Z",
+)
 
 
 def fixation(fixation_id: str, start_ms: int, aoi_id: str) -> Fixation:
@@ -25,7 +30,10 @@ def fixation(fixation_id: str, start_ms: int, aoi_id: str) -> Fixation:
     end_seconds = end_ms // 1000
     end_millis = end_ms % 1000
     end = f"2026-01-01T10:00:{end_seconds:02d}.{end_millis:03d}Z"
-    return Fixation(fixation_id, (f"{fixation_id}-sample",), start, end, 100, 0.2, 0.2)
+    return Fixation(
+        fixation_id, (f"{fixation_id}-sample",), start, end, 100, 0.2, 0.2,
+        session_id=SESSION_ID, study_id=STUDY_ID, trial_id="trial-a-1", aoi_set_version=AOI_VERSION,
+    )
 
 
 def event_assignment(fixation_id: str, aoi_id: str) -> AOIAssignment:
@@ -62,6 +70,7 @@ def test_metrics_are_deterministic_and_follow_frozen_definitions():
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-a",
         start_event=start_event(),
+        observation_context=OBSERVATION_CONTEXT,
     )
     second = compute_gaze_metrics(
         list(reversed(fixations)),
@@ -71,6 +80,7 @@ def test_metrics_are_deterministic_and_follow_frozen_definitions():
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-a",
         start_event=start_event(),
+        observation_context=OBSERVATION_CONTEXT,
     )
     assert first == second
     assert first["gaze.ttff_ms"]["value"] == 1000
@@ -96,6 +106,7 @@ def test_zero_is_distinct_from_unavailable_and_single_category_entropy_is_zero()
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-missing",
         start_event=start_event(),
+        observation_context=OBSERVATION_CONTEXT,
     )
     assert metrics["gaze.dwell_time_ms"]["value"] == 0
     assert metrics["gaze.dwell_time_ms"]["missingness"] is None
@@ -109,6 +120,7 @@ def test_zero_is_distinct_from_unavailable_and_single_category_entropy_is_zero()
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-a",
         start_event=start_event(),
+        observation_context=OBSERVATION_CONTEXT,
     )["gaze.entropy_bits"]["value"] == 0
 
 
@@ -123,6 +135,7 @@ def test_missing_start_and_empty_or_unavailable_gaze_are_explicit():
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-a",
         start_event=None,
+        observation_context=OBSERVATION_CONTEXT,
     )
     assert missing_start["gaze.ttff_ms"]["missingness"] == "gaze.observation_start_missing"
     empty = compute_gaze_metrics(
@@ -133,8 +146,9 @@ def test_missing_start_and_empty_or_unavailable_gaze_are_explicit():
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-a",
         start_event=None,
+        observation_context=OBSERVATION_CONTEXT,
     )
-    assert empty["gaze.dwell_time_ms"]["missingness"] == "gaze.no_samples"
+    assert empty["gaze.dwell_time_ms"]["missingness"] == "gaze.no_qualifying_observations"
     unavailable = compute_gaze_metrics(
         [],
         [],
@@ -143,6 +157,7 @@ def test_missing_start_and_empty_or_unavailable_gaze_are_explicit():
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-a",
         start_event=None,
+        observation_context=OBSERVATION_CONTEXT,
         gaze_available=False,
         gaze_missingness="gaze.permission_denied",
     )
@@ -160,6 +175,7 @@ def test_start_event_context_and_assignment_identity_are_validated():
             aoi_set_version=AOI_VERSION,
             requested_aoi_id="aoi-a",
             start_event=start_event("study-other"),
+            observation_context=OBSERVATION_CONTEXT,
         )
     with pytest.raises(GazeNormalizationError, match="must match"):
         compute_gaze_metrics(
@@ -170,6 +186,7 @@ def test_start_event_context_and_assignment_identity_are_validated():
             aoi_set_version=AOI_VERSION,
             requested_aoi_id="aoi-a",
             start_event=start_event(),
+            observation_context=OBSERVATION_CONTEXT,
         )
 
 
@@ -184,6 +201,7 @@ def test_start_event_retries_are_idempotent_and_distinct_starts_are_ambiguous():
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-a",
         start_event=[start_event(), start_event()],
+        observation_context=OBSERVATION_CONTEXT,
     )
     assert retry_metrics["gaze.ttff_ms"]["value"] == 100
     second_start = {**start_event(), "event_id": "start-2", "occurred_at": "2026-01-01T10:00:00.050Z"}
@@ -195,6 +213,7 @@ def test_start_event_retries_are_idempotent_and_distinct_starts_are_ambiguous():
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-a",
         start_event=[start_event(), second_start],
+        observation_context=OBSERVATION_CONTEXT,
     )
     assert ambiguous["gaze.ttff_ms"]["value"] is None
     assert ambiguous["gaze.ttff_ms"]["missingness"] == "gaze.observation_start_ambiguous"
@@ -208,6 +227,7 @@ def test_start_event_retries_are_idempotent_and_distinct_starts_are_ambiguous():
             aoi_set_version=AOI_VERSION,
             requested_aoi_id="aoi-a",
             start_event=[start_event(), conflicting],
+            observation_context=OBSERVATION_CONTEXT,
         )
 def test_gaze_feature_record_is_schema_valid_and_preserves_non_gaze_fallback():
     metrics = compute_gaze_metrics(
@@ -218,6 +238,7 @@ def test_gaze_feature_record_is_schema_valid_and_preserves_non_gaze_fallback():
         aoi_set_version=AOI_VERSION,
         requested_aoi_id="aoi-a",
         start_event=None,
+        observation_context=OBSERVATION_CONTEXT,
         gaze_available=False,
         gaze_missingness="gaze.permission_denied",
     )
