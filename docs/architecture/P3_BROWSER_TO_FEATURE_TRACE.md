@@ -54,15 +54,11 @@ P3 feature path accepts provider samples as an explicit in-process
 `TrialObservationContext`, pinned AOI-set version, geometry snapshot, and
 trial lifecycle start event.
 
-The frozen architecture defines the intended bridge in
-`docs/architecture/INTEGRATION_FREEZE.md` §9: P1 supplies a consented
-`MediaStream`, initial geometry, lifecycle callbacks, and the narrow
-ProviderSample bridge; P3 owns provider adaptation and canonicalization. The
-current WebGazer adapter calls WebGazer's `begin()`, which obtains its own
-camera stream. That is suitable for this provider-only smoke test but does
-not satisfy the frozen final P1 bridge. Resolving that requires an explicit
-P1/integrator decision about a supported provider initialization design; this
-slice does not start a second stream or change the P1 interface.
+The revised architecture in `docs/architecture/INTEGRATION_FREEZE.md` §9
+keeps consent and participant lifecycle in P1, while allowing a selected P3
+provider to acquire and release its own camera stream through the supported
+provider API. P1 supplies `consent_granted: true`, initial geometry, and
+lifecycle callbacks; it does not supply a mandatory `MediaStream`.
 
 ## WebGazer 3.5.3 stream investigation
 
@@ -86,18 +82,15 @@ source evidence:
 There is consequently no verified public external-stream initialization path
 in the pinned package. Passing a stream through private `init()` would require
 bundler/runtime-specific access to a non-exported function and would be
-brittle across package updates. The adapter now rejects a frozen-contract
-start with `camera_stream` and `initial_geometry` using the explicit reason
-`gaze.external_stream_unsupported`; it does not call `begin()` and does not
-stop the supplied stream. The existing smoke page uses an explicit
-`test_only: true` mode, retaining its provider-only behavior and its own
-consent checkbox without presenting it as final P1 integration.
+brittle across package updates. The provider now uses public `begin()` after
+the explicit consent authorization and calls provider cleanup in an order that
+releases the stream acquired by WebGazer. It rejects legacy external-stream
+inputs rather than silently accepting them.
 
-Supported design options requiring P1/integrator approval are: adopt a
-provider/browser implementation that publicly accepts the P1 stream; maintain
-a reviewed WebGazer fork or wrapper that exposes stream injection and defines
-ownership-safe cleanup; or explicitly revise the boundary so this provider
-owns camera acquisition. None is silently selected here.
+The approved design is the third option: WebGazer owns acquisition for this
+provider, while P1 remains responsible for consent authorization and the
+participant-facing lifecycle. A future provider that requires an external
+stream must be reviewed against this lifecycle before selection.
 
 ## Existing identity and lifecycle behavior
 

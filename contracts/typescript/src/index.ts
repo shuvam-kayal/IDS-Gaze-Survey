@@ -15,6 +15,6 @@ export interface GeometrySnapshotV2 { schema_version:"2.0.0"; snapshot_id:string
 export interface GazeObservationAssociation { schema_version:"1.0.0"; association_id:string; session_id:string; study_id:string; trial_id:string; aoi_set_version:string; window_start:string; window_end:string; gaze_records:GazeRecord[]; }
 export interface ConsolidatedSurveyPlan { schema_version:"1.0.0"; survey_plan_id:string; session_id:string; study_ids:string[]; question_ids:string[]; presentation:"end_of_session"; }
 export type ProviderStatus = "initializing" | "ready" | "unavailable" | "stopped";
-export interface ProviderAdapterInput { session_id:string; camera_stream:MediaStream; initial_geometry:GeometrySnapshot; on_sample:(sample:ProviderSample)=>void; on_status:(status:ProviderStatus,reason?:string)=>void; }
+export interface ProviderAdapterInput { session_id:string; consent_granted:true; initial_geometry:GeometrySnapshot; on_sample:(sample:ProviderSample)=>void; on_status:(status:ProviderStatus,reason?:string)=>void; }
 export interface ProviderAdapter { start(input:ProviderAdapterInput):Promise<void>; stop():void; }
 export interface AnalysisResult { schema_version:"1.0.0"; analysis_id:string; analysis_request_id:string; study_id:string; feature_set_version:string; model_version:string|null; modality:Modality; status:"queued"|"running"|"succeeded"|"failed"|"insufficient_data"; sample_size:number; results:Record<string,unknown>; limitations:string[]; created_at:string|null; }
