@@ -56,8 +56,12 @@ def validate_observation_association(association: dict[str, Any]) -> tuple[Trial
 
     if not isinstance(association, dict) or association.get("schema_version") != "1.0.0":
         raise GazeNormalizationError("unsupported gaze observation association")
-    required = {"association_id", "session_id", "study_id", "trial_id", "aoi_set_version", "window_start", "window_end", "gaze_records"}
-    if not required.issubset(association) or not isinstance(association["gaze_records"], list):
+    required = {"schema_version", "association_id", "session_id", "study_id", "trial_id", "aoi_set_version", "window_start", "window_end", "gaze_records"}
+    if set(association) != required:
+        raise GazeNormalizationError("gaze observation association has invalid fields")
+    if not all(isinstance(association[field], str) and association[field] for field in required - {"schema_version", "gaze_records"}):
+        raise GazeNormalizationError("gaze observation association string fields are invalid")
+    if not isinstance(association["gaze_records"], list):
         raise GazeNormalizationError("gaze observation association is missing required fields")
     context = TrialObservationContext(
         session_id=association["session_id"],

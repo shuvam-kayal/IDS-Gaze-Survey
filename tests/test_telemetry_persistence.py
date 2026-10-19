@@ -105,14 +105,61 @@ def test_session_lifecycle_and_idempotent_deletion(repository):
         )
 
 
-def test_retention_purges_old_events(repository):
+def test_late_event_reopens_completed_processing_scope(repository):
     session_id = f"session-{uuid4()}"
+    repository.ingest(event(session_id, "evt-close", "2026-01-01T10:00:02Z"))
+    repository.mark_session_closed(session_id)
+    repository.mark_complete(session_id)
+    repository.ingest(event(session_id, "evt-late", "2026-01-01T10:00:01Z"))
+    with repository.sessions() as db:
+        processing = db.get(SessionProcessing, session_id)
+        assert processing is not None
+        assert processing.state == "open"
+
+
+def test_retention_purges_old_events(repository):
+    session_id = f"session-closed-{uuid4()}"
+    open_session_id = f"session-open-{uuid4()}"
     repository.ingest(event(session_id, "evt-1", "2026-01-01T10:00:00Z"))
+    repository.ingest(event(open_session_id, "evt-open", "2026-01-01T10:00:00Z"))
+    reference_time = datetime(2026, 2, 1, tzinfo=UTC)
     with repository.sessions.begin() as db:
         row = db.scalar(
             select(TelemetryEvent).where(
                 TelemetryEvent.event_id == "evt-1", TelemetryEvent.session_id == session_id
             )
         )
-        row.ingested_at = datetime.now(UTC) - timedelta(days=31)
-    assert repository.purge_expired_events(retention_days=30) == 1
+        row.ingested_at = reference_time
+        db.get(SessionProcessing, session_id).closed_at = reference_time - timedelta(days=31)
+        open_row = db.get(SessionProcessing, open_session_id)
+        open_row.closed_at = None
+        db.scalar(
+            select(TelemetryEvent).where(
+                TelemetryEvent.event_id == "evt-open", TelemetryEvent.session_id == open_session_id
+            )
+        ).ingested_at = reference_time - timedelta(days=31)
+    assert repository.purge_expired_events(now=reference_time, retention_days=30) == 1
+    assert repository.list_events(session_id) == []
+    assert [row["event_id"] for row in repository.list_events(open_session_id)] == ["evt-open"]
+
+
+def test_retention_keeps_event_at_exact_closure_boundary(repository):
+    session_id = f"session-boundary-{uuid4()}"
+    repository.ingest(event(session_id, "evt-boundary", "2026-01-01T10:00:00Z"))
+    reference_time = datetime(2026, 2, 1, tzinfo=UTC)
+    with repository.sessions.begin() as db:
+        processing = db.get(SessionProcessing, session_id)
+        processing.closed_at = reference_time - timedelta(days=30)
+        db.scalar(
+            select(TelemetryEvent).where(
+                TelemetryEvent.event_id == "evt-boundary", TelemetryEvent.session_id == session_id
+            )
+        ).ingested_at = reference_time - timedelta(days=31)
+    assert repository.purge_expired_events(now=reference_time, retention_days=30) == 0
+    assert len(repository.list_events(session_id)) == 1
+
+
+@pytest.mark.parametrize("retention_days", [0, -1])
+def test_retention_rejects_non_positive_period(repository, retention_days):
+    with pytest.raises(ValueError, match="retention_days must be positive"):
+        repository.purge_expired_events(retention_days=retention_days)

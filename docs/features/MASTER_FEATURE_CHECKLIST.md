@@ -38,3 +38,15 @@ All items start planned until implementation and acceptance tests prove otherwis
 | AF | Privacy, roles, retention, audit, operations | All by subsystem | security/ops checklist |
 
 Every row needs an owner, issue/PR, status and test evidence. Do not claim scientific validity without adequate sample size, leakage-safe evaluation and stated limitations.
+
+P3 M2b acceptance evidence: `tests/test_gaze_pipeline.py` covers the
+provider-to-FeatureRecord gaze path, deterministic reordering, camera denial,
+and empty capture. `tests/test_telemetry_persistence.py` records the existing
+late-event reopening behavior; execution requires the configured PostgreSQL
+test database.
+
+P3 M3 acceptance evidence: `tests/test_gaze_pipeline.py` covers two eligible
+studies in one session, study-specific event filtering, pinned AOI/configuration
+versions, different trial windows, partial camera availability, deterministic
+result ordering, and safe rejection of version mismatches. P1/P2 eligibility,
+bootstrap issuance, and survey consolidation remain cross-owner dependencies.
