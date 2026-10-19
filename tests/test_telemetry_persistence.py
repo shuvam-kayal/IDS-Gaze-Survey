@@ -39,6 +39,7 @@ def event(session_id: str, event_id: str, occurred_at: str, **changes: object) -
 
 @pytest.fixture(scope="module")
 def repository():
+    pytest.importorskip("psycopg", reason="PostgreSQL integration tests require psycopg 3")
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
     try:
         with engine.connect() as connection:

@@ -31,12 +31,16 @@ export function fetchParticipantConfiguration(options: {
   bootstrapUrl: string;
   experienceId: string;
   studyConfigUrl: (studyId: string, configVersion: string) => string;
+  questionConfigUrl: (studyId: string, questionSetVersion: string) => string;
   surveyPlanUrl: (sessionId: string) => string;
+  surveyPlanDetailsUrl: (sessionId: string) => string;
   fetchImpl?: typeof fetch;
   now?: number;
 }): Promise<{
   bootstrap: SessionBootstrapPayload;
   studyConfigs: StudyConfig[];
+  questionConfigs: import("./survey.js").QuestionConfig[];
   surveyPlan: ConsolidatedSurveyPlan;
+  surveyPlanDetails: { schema_version: "1.0.0"; survey_plan_id: string; questions: Array<{ question_id: string; question: import("./survey.js").QuestionDefinition; origins: Array<{ study_id: string; question_set_version: string; question_version: string; order: number }> }>; question_origins: Record<string, unknown>; timing_rules: unknown[] };
   modalityOptions: { camera_capture_supported: boolean; gaze_required: boolean; non_gaze_available: true };
 }>;

@@ -285,8 +285,9 @@ class ControlPlaneRepository:
                           "gaze_required": False, "priority": row.priority,
                           "aoi_config": {"schema_version": "1.0.0", "config_version": aoi_version,
                                          "items": row.config.get("aois", [])},
-                          "question_config": {"schema_version": "1.0.0", "config_version": question_version,
-                                              "items": row.config.get("questions", [])}}
+                          "question_config": {"schema_version": "1.0.0", "study_id": row.study_id,
+                                              "question_set_version": question_version,
+                                              "questions": row.config.get("questions", [])}}
             self._audit(db, actor_id, actor_role, "study.published", study_id,
                         {"config_version": row.config_version}, target_type="study")
         return self.get_study(study_id)

@@ -22,15 +22,15 @@ def consolidate_survey(session_id: str, assignments: list[dict[str, Any]]) -> di
         study_id = assignment["study_id"]
         study_ids.append(study_id)
         raw = config.get("question_config", {})
-        questions = raw.get("items", [])
-        question_version = raw.get("config_version", config.get("question_set_version", ""))
+        questions = raw.get("questions", raw.get("items", []))
+        question_version = raw.get("question_set_version", raw.get("config_version", config.get("question_set_version", "")))
         policy = config.get("survey_policy", {})
         timing = policy.get("timing", "after_exposure")
         timing_rules.append({"study_id": study_id, "question_set_version": question_version,
                              "timing": timing, "timing_rules": config.get("timing_rules", {})})
         for idx, question in enumerate(questions):
             question_id = question["question_id"]
-            semantics = {key: value for key, value in question.items() if key != "version"}
+            semantics = {key: value for key, value in question.items() if key not in {"version", "order"}}
             semantic_key = json.dumps(semantics, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
             policy_mode = policy.get("consolidation", "keep_study_scoped")
             dedupe_key = question_id if policy_mode == "deduplicate_by_question_id" else f"{study_id}:{question_id}"

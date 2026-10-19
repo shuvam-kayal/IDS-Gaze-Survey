@@ -1,3 +1,5 @@
+import { parseQuestionConfig } from "./survey.js";
+
 const BOOTSTRAP_VERSION = "1.0.0";
 const CONFIG_VERSION = "1.0.0";
 const DATE_TIME_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)$/;
@@ -163,17 +165,32 @@ export async function fetchSessionBootstrap({ endpoint, experienceId, fetchImpl 
 
 /** Load pinned study configs and the separate consolidated survey plan. */
 export async function fetchParticipantConfiguration({
-  bootstrapUrl, experienceId, studyConfigUrl, surveyPlanUrl, fetchImpl = globalThis.fetch, now = Date.now(),
+  bootstrapUrl, experienceId, studyConfigUrl, questionConfigUrl, surveyPlanUrl, surveyPlanDetailsUrl,
+  fetchImpl = globalThis.fetch, now = Date.now(),
 }) {
-  if (typeof studyConfigUrl !== "function" || typeof surveyPlanUrl !== "function") {
-    throw new TypeError("studyConfigUrl and surveyPlanUrl resolvers are required");
+  if (typeof studyConfigUrl !== "function" || typeof questionConfigUrl !== "function" ||
+      typeof surveyPlanUrl !== "function" || typeof surveyPlanDetailsUrl !== "function") {
+    throw new TypeError("study, question, survey plan, and survey plan details URL resolvers are required");
   }
   const bootstrap = await fetchSessionBootstrap({ endpoint: bootstrapUrl, experienceId, fetchImpl, now });
   const studyConfigs = await Promise.all(bootstrap.eligible_studies.map(async (study) => {
     const config = await getJson(fetchImpl, studyConfigUrl(study.study_id, study.config_version));
     return parseStudyConfig(config, { bootstrap, study });
   }));
+  const questionConfigs = await Promise.all(bootstrap.eligible_studies.map(async (study) => {
+    const raw = await getJson(fetchImpl, questionConfigUrl(study.study_id, study.question_set_version));
+    const config = parseQuestionConfig(raw);
+    if (config.study_id !== study.study_id || config.question_set_version !== study.question_set_version) {
+      throw new TypeError("QuestionConfig identity/version does not match the SessionBootstrap pin");
+    }
+    return config;
+  }));
   const surveyPlan = parseSurveyPlan(await getJson(fetchImpl, surveyPlanUrl(bootstrap.session_id)), { bootstrap });
+  const surveyPlanDetails = await getJson(fetchImpl, surveyPlanDetailsUrl(bootstrap.session_id));
+  if (!record(surveyPlanDetails) || surveyPlanDetails.schema_version !== "1.0.0" ||
+      surveyPlanDetails.survey_plan_id !== surveyPlan.survey_plan_id || !Array.isArray(surveyPlanDetails.questions)) {
+    throw new TypeError("SurveyPlan details are invalid or do not match the pinned plan");
+  }
   const configsById = new Map(studyConfigs.map((config) => [config.study_id, config]));
   if (surveyPlan.study_ids.some((studyId) => !configsById.has(studyId))) {
     throw new TypeError("SurveyPlan references a Study with no pinned StudyConfig");
@@ -181,7 +198,9 @@ export async function fetchParticipantConfiguration({
   return {
     bootstrap,
     studyConfigs,
+    questionConfigs,
     surveyPlan,
+    surveyPlanDetails,
     modalityOptions: {
       camera_capture_supported: bootstrap.camera_capture_supported,
       gaze_required: studyConfigs.some((config) => config.gaze_required),

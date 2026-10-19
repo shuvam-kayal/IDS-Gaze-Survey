@@ -103,7 +103,8 @@ The registry and audit trail use the repository's PostgreSQL/SQLAlchemy/Alembic
 stack; they do not create tables or seed accounts during API startup.
 
 `apps/researcher-console/src/features/experiences/` and `.../studies/` contain
-the API clients and accessible registry/authoring screens. The surrounding
-console application still needs to mount `mountExperienceRegistry()` and
-`mountStudyAuthoring()` in its app shell. The Vite shell, navigation, and
-two-Study seed action are documented in `apps/researcher-console/README.md`.
+the API clients and accessible registry/authoring screens, mounted by the
+console shell at `apps/researcher-console/src/main.ts`. Run the console with
+`npm run dev --workspace @ids-gaze/researcher-console` after starting the API;
+the complete setup and local two-Study seed action are documented in
+`apps/researcher-console/README.md`.

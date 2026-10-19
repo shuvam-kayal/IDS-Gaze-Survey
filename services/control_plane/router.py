@@ -245,7 +245,7 @@ class StudyWrite(StrictModel):
         normalized = []
         for index, item in enumerate(values):
             answer_type = item.get("answer_type", item.get("type"))
-            if answer_type not in {"single_choice", "multiple_choice", "multi_choice", "rating", "scale"}:
+            if answer_type not in {"single_choice", "multi_choice", "multiple_choice", "free_text", "boolean", "scale", "rating"}:
                 raise ValueError("Question type is unsupported")
             if not all(isinstance(item.get(k), str) and item[k].strip() for k in ("question_id", "prompt")):
                 raise ValueError("Questions require question_id and prompt")
@@ -275,6 +275,26 @@ class StudyWrite(StrictModel):
                     options.append(option)
                 if len({option["option_id"] for option in options}) != len(options):
                     raise ValueError("Question option IDs must be unique")
+            elif answer_type == "boolean":
+                choices = item.get("options", item.get("choices", [
+                    {"option_id": "true", "label": "Yes"},
+                    {"option_id": "false", "label": "No"},
+                ]))
+                if not isinstance(choices, list) or len(choices) != 2:
+                    raise ValueError("Boolean questions require true and false options")
+                options = []
+                for choice in choices:
+                    if not isinstance(choice, dict) or set(choice) - {"option_id", "label"}:
+                        raise ValueError("Boolean options require true/false IDs and labels")
+                    options.append({"option_id": choice.get("option_id"), "label": choice.get("label")})
+                if {option.get("option_id") for option in options} != {"true", "false"} or not all(
+                    isinstance(option.get("label"), str) and option["label"].strip()
+                    for option in options
+                ):
+                    raise ValueError("Boolean options require true/false IDs and non-empty labels")
+            elif answer_type == "free_text":
+                if item.get("options") is not None or item.get("choices") is not None:
+                    raise ValueError("Free-text questions cannot define choices")
             elif answer_type in {"rating", "scale"}:
                 if not isinstance(item.get("min"), int) or not isinstance(item.get("max"), int) or item["min"] >= item["max"]:
                     raise ValueError("Rating and scale questions require min < max")
@@ -285,7 +305,7 @@ class StudyWrite(StrictModel):
             normalized.append({"question_id": item["question_id"], "prompt": item["prompt"],
                 "answer_type": "multi_choice" if answer_type == "multiple_choice" else "scale" if answer_type == "rating" else answer_type,
                 "required": item.get("required", False), "order": item.get("order", index),
-                **({"options": options} if answer_type in {"single_choice", "multiple_choice", "multi_choice", "rating", "scale"} else {})})
+                **({"options": options} if answer_type in {"single_choice", "multiple_choice", "multi_choice", "rating", "scale", "boolean"} else {})})
         return sorted(normalized, key=lambda question: question["order"])
 
 
@@ -769,10 +789,14 @@ def get_participant_question_config(
     _, item = _study_assignment(session_id, study_id, repository)
     config = item["study_config"]
     questions = config["question_config"]
-    if config_version != questions["config_version"]: raise HTTPException(status_code=404, detail="Pinned Question config version not found")
+    if config_version != config["question_set_version"]: raise HTTPException(status_code=404, detail="Pinned Question config version not found")
     response.headers["Access-Control-Allow-Origin"] = origin; response.headers["Vary"] = "Origin"
+    if {"schema_version", "study_id", "question_set_version", "questions"}.issubset(questions):
+        return questions
+    # Existing pinned sessions may contain the earlier internal representation.
     return {"schema_version": "1.0.0", "study_id": study_id,
-            "question_set_version": questions["config_version"], "questions": questions["items"]}
+            "question_set_version": questions.get("config_version", config["question_set_version"]),
+            "questions": questions.get("items", [])}
 
 
 def _consolidated_plan(session_id: str, repository: ControlPlaneRepository) -> dict:

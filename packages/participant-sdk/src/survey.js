@@ -1,5 +1,10 @@
 function object(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
 function nonEmpty(value) { return typeof value === "string" && value.trim().length > 0; }
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (object(value)) return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+  return value;
+}
 function assertKeys(value, required, optional, name) {
   for (const key of required) if (!(key in value)) throw new TypeError(`${name}.${key} is required`);
   const allowed = new Set([...required, ...optional]);
@@ -49,7 +54,7 @@ export function parseQuestionConfig(value) {
 function makeId() { return globalThis.crypto?.randomUUID?.() || `resp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`; }
 function empty(answer) { return answer === undefined || answer === null || answer === "" || (Array.isArray(answer) && answer.length === 0); }
 
-export function createSurveyRuntime({ questionConfigs, surveyPlan, context, consentController, onSubmit, idFactory = makeId } = {}) {
+export function createSurveyRuntime({ questionConfigs, surveyPlan, surveyPlanDetails, context, consentController, onSubmit, idFactory = makeId } = {}) {
   if (!Array.isArray(questionConfigs) || questionConfigs.length === 0) throw new TypeError("At least one versioned QuestionConfig is required");
   if (!object(surveyPlan) || surveyPlan.schema_version !== "1.0.0" || surveyPlan.presentation !== "end_of_session" || !Array.isArray(surveyPlan.question_ids)) {
     throw new TypeError("A valid versioned ConsolidatedSurveyPlan is required");
@@ -76,11 +81,33 @@ export function createSurveyRuntime({ questionConfigs, surveyPlan, context, cons
   }
   if (!Array.isArray(surveyPlan.question_ids) || surveyPlan.question_ids.length === 0) throw new TypeError("SurveyPlan requires question IDs");
   if (new Set(surveyPlan.question_ids).size !== surveyPlan.question_ids.length) throw new TypeError("SurveyPlan question IDs must be unique");
-  const orderedQuestions = surveyPlan.question_ids.map((id) => {
-    const refs = questionsById.get(id) || [];
-    if (refs.length !== 1) throw new TypeError(`SurveyPlan question ${id} must resolve to exactly one pinned question config`);
-    return refs[0];
-  });
+  let orderedQuestions;
+  if (surveyPlanDetails !== undefined) {
+    if (!object(surveyPlanDetails) || surveyPlanDetails.schema_version !== "1.0.0" ||
+        surveyPlanDetails.survey_plan_id !== surveyPlan.survey_plan_id || !Array.isArray(surveyPlanDetails.questions)) {
+      throw new TypeError("SurveyPlan details must match the pinned plan");
+    }
+    const detailsById = new Map(surveyPlanDetails.questions.map((item) => [item.question_id, item]));
+    orderedQuestions = surveyPlan.question_ids.map((id) => {
+      const detail = detailsById.get(id);
+      if (!detail || !object(detail.question) || !Array.isArray(detail.origins) || detail.origins.length === 0) {
+        throw new TypeError(`SurveyPlan question ${id} has no valid provenance details`);
+      }
+      const origin = detail.origins[0];
+      const config = configs.find((candidate) => candidate.study_id === origin.study_id && candidate.question_set_version === origin.question_set_version);
+      const source = config?.questions.find((question) => question.question_id === detail.question.question_id);
+      if (!source || JSON.stringify(stable(source)) !== JSON.stringify(stable(detail.question))) {
+        throw new TypeError(`SurveyPlan question ${id} does not match its pinned source config`);
+      }
+      return { question: { ...source, question_id: id }, study_id: origin.study_id, question_set_version: origin.question_set_version };
+    });
+  } else {
+    orderedQuestions = surveyPlan.question_ids.map((id) => {
+      const refs = questionsById.get(id) || [];
+      if (refs.length !== 1) throw new TypeError(`SurveyPlan question ${id} must resolve to exactly one pinned question config`);
+      return refs[0];
+    });
+  }
   const answerValues = new Map();
   let state = "editing";
   let frozenPayload = null;

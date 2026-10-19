@@ -23,6 +23,7 @@ export function parseQuestionConfig(value: unknown): QuestionConfig;
 export function createSurveyRuntime(options: {
   questionConfigs: QuestionConfig[];
   surveyPlan: { schema_version: "1.0.0"; survey_plan_id: string; session_id: string; study_ids: string[]; question_ids: string[]; presentation: "end_of_session" };
+  surveyPlanDetails?: { schema_version: "1.0.0"; survey_plan_id: string; questions: Array<{ question_id: string; question: QuestionDefinition; origins: Array<{ study_id: string; question_set_version: string; question_version: string; order: number }> }> };
   context: { experience_id: string; session_id: string; participant_id?: string | null };
   consentController: { readonly canCollectResearch: boolean; registerCollector(stop: () => void): () => boolean };
   onSubmit: (payload: SurveySubmission, options: { signal: AbortSignal }) => Promise<unknown> | unknown;

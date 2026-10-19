@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -9,12 +10,12 @@ import pytest
 import jsonschema
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 
 import services.api.app as api
 from services.control_plane import auth
 from services.control_plane.router import get_control_repository
 from services.control_plane.store import ControlPlaneRepository
-from services.telemetry.persistence import Base
 
 
 class MemoryControlRepository:
@@ -116,7 +117,8 @@ class MemoryControlRepository:
                              "survey_policy": record["config"].get("survey_policy", {"timing": "after_exposure", "consolidation": "deduplicate_by_question_id"}),
                              "gaze_required": False, "priority": record["priority"],
                              "aoi_config": {"schema_version": "1.0.0", "config_version": aoi_version, "items": record["config"].get("aois", [])},
-                             "question_config": {"schema_version": "1.0.0", "config_version": question_version, "items": record["config"].get("questions", [])}}
+                             "question_config": {"schema_version": "1.0.0", "study_id": study_id,
+                                                  "question_set_version": question_version, "questions": record["config"].get("questions", [])}}
         record["published_at"] = self._now()
         return record
 
@@ -407,7 +409,7 @@ def test_experience_can_host_independent_studies_and_pins_each_published_config(
     assert pinned_second["config"]["timing_rules"] == {"duration_ms": 2}
     assert pinned_first["config"]["schema_version"] == "1.0.0"
     assert pinned_first["config"]["aoi_config"]["config_version"].startswith("aoi-config-v1:")
-    assert pinned_first["config"]["question_config"]["config_version"].startswith("question-config-v1:")
+    assert pinned_first["config"]["question_config"]["question_set_version"].startswith("question-config-v1:")
     assert client.put(f"/v1/control/studies/{first['study_id']}", headers=headers,
         json=_study_body(exp_id, "Mutated live", 1, {"all": []}, 99)).status_code == 409
 
@@ -448,7 +450,7 @@ def test_study_contract_rejects_unsafe_rules_and_invalid_question_or_aoi_config(
     exp_id = _published_experience(client, headers)["experience_id"]
     invalids = [
         {"eligibility_rules": {"expression": "__import__('os')"}},
-        {"questions": [{"question_id": "q", "prompt": "Q", "version": "1", "type": "free_text"}]},
+        {"questions": [{"question_id": "q", "prompt": "Q", "version": "1", "type": "matrix"}]},
         {"aois": [{"aoi_id": "a", "name": "A", "selector": "#a", "script": "alert(1)"}]},
     ]
     for override in invalids:
@@ -457,9 +459,18 @@ def test_study_contract_rejects_unsafe_rules_and_invalid_question_or_aoi_config(
         assert client.post(f"/v1/control/experiences/{exp_id}/studies", headers=headers, json=body).status_code == 422
 
 
-def test_database_repository_persists_immutable_session_config_snapshots():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
+def test_postgresql_repository_persists_immutable_session_config_snapshots():
+    pytest.importorskip("psycopg", reason="PostgreSQL integration tests require psycopg 3")
+    database_url = os.environ.get(
+        "TEST_DATABASE_URL",
+        os.environ.get("DATABASE_URL", "postgresql+psycopg://attention:attention@localhost:5432/attention?connect_timeout=3"),
+    )
+    engine = create_engine(database_url, pool_pre_ping=True)
+    try:
+        with engine.connect() as connection:
+            connection.exec_driver_sql("SELECT 1")
+    except OperationalError as exc:
+        pytest.skip(f"PostgreSQL test database unavailable: {exc}")
     repository = ControlPlaneRepository(engine)
     experience = repository.create_experience(name="Persistent", allowed_origins=["https://study.example"], actor_id="researcher", actor_role="researcher")
     repository.set_lifecycle(experience["experience_id"], target_status="published", actor_id="researcher", actor_role="researcher")
@@ -474,6 +485,79 @@ def test_database_repository_persists_immutable_session_config_snapshots():
     with pytest.raises(ValueError, match="Only existing draft Studies"):
         repository.save_study(draft["study_id"], experience_id=experience["experience_id"], name="mutated", priority=0,
             eligibility_rules={"all": []}, config={}, actor_id="researcher", actor_role="researcher")
+
+
+@pytest.mark.parametrize("answer_type,extra", [
+    ("single_choice", {"options": [{"option_id": "a", "label": "A"}]}),
+    ("multi_choice", {"options": [{"option_id": "a", "label": "A"}]}),
+    ("free_text", {}),
+    ("scale", {"min": 1, "max": 3}),
+    ("boolean", {}),
+])
+def test_published_question_config_is_sdk_and_frozen_schema_compatible(control_client, answer_type, extra):
+    client, _ = control_client
+    session = sign_in(client, "researcher")
+    headers = csrf(session)
+    experience = _published_experience(client, headers)
+    exp_id = experience["experience_id"]
+    question = {"question_id": f"q-{answer_type}", "prompt": "Answer", "answer_type": answer_type,
+                "required": True, "order": 0, **extra}
+    created = client.post(f"/v1/control/experiences/{exp_id}/studies", headers=headers,
+        json={**_study_body(exp_id, "Question contract", 3, {"all": []}, 8), "questions": [question]})
+    assert created.status_code == 201, created.text
+    published = client.post(f"/v1/control/studies/{created.json()['study_id']}/publish", headers=headers)
+    assert published.status_code == 200, published.text
+    boot = client.post("/v1/sessions/bootstrap", headers={"Origin": "https://study.example"},
+        json={"experience_id": exp_id})
+    assert boot.status_code == 200, boot.text
+    pinned = boot.json()["eligible_studies"][0]
+    config_response = client.get(
+        f"/v1/sessions/{boot.json()['session_id']}/studies/{created.json()['study_id']}/question-config",
+        params={"config_version": pinned["question_set_version"]}, headers={"Origin": "https://study.example"})
+    assert config_response.status_code == 200, config_response.text
+    config = config_response.json()
+    assert config["study_id"] == created.json()["study_id"]
+    assert config["question_set_version"] == pinned["question_set_version"]
+    schema_path = Path(__file__).parents[1] / "contracts/schemas/question-config.v1.schema.json"
+    jsonschema.Draft202012Validator(json.loads(schema_path.read_text())).validate(config)
+    assert config["questions"][0]["answer_type"] == answer_type
+
+
+def test_question_authoring_rejects_types_not_rendered_by_the_sdk(control_client):
+    client, _ = control_client
+    session = sign_in(client, "researcher")
+    headers = csrf(session)
+    experience = _published_experience(client, headers)
+    exp_id = experience["experience_id"]
+    body = _study_body(exp_id, "Unsupported type", 1, {"all": []}, 1)
+    body["questions"] = [{"question_id": "q", "prompt": "Unsupported", "answer_type": "matrix"}]
+    assert client.post(f"/v1/control/experiences/{exp_id}/studies", headers=headers, json=body).status_code == 422
+
+
+def test_legacy_pinned_question_snapshot_is_adapted_to_the_sdk_contract(control_client):
+    client, repository = control_client
+    session = sign_in(client, "researcher")
+    headers = csrf(session)
+    exp_id = _published_experience(client, headers)["experience_id"]
+    created = client.post(f"/v1/control/experiences/{exp_id}/studies", headers=headers,
+        json=_study_body(exp_id, "Legacy question snapshot", 1, {"all": []}, 1))
+    study_id = created.json()["study_id"]
+    client.post(f"/v1/control/studies/{study_id}/publish", headers=headers)
+    bootstrap = client.post("/v1/sessions/bootstrap", headers={"Origin": "https://study.example"},
+        json={"experience_id": exp_id}).json()
+    pin = bootstrap["eligible_studies"][0]
+    assignment = repository.get_assignment(bootstrap["session_id"])
+    legacy_questions = assignment["assignments"][0]["study_config"]["question_config"]
+    assignment["assignments"][0]["study_config"]["question_config"] = {
+        "schema_version": "1.0.0", "config_version": pin["question_set_version"],
+        "items": legacy_questions["questions"],
+    }
+    response = client.get(
+        f"/v1/sessions/{bootstrap['session_id']}/studies/{study_id}/question-config",
+        params={"config_version": pin["question_set_version"]}, headers={"Origin": "https://study.example"})
+    assert response.status_code == 200
+    schema_path = Path(__file__).parents[1] / "contracts/schemas/question-config.v1.schema.json"
+    jsonschema.Draft202012Validator(json.loads(schema_path.read_text())).validate(response.json())
 
 
 def test_participant_session_bootstrap_and_pinned_resources_match_contracts(control_client):
@@ -525,7 +609,8 @@ def test_survey_consolidation_is_deterministic_and_only_merges_matching_semantic
             "question_set_version": version,
             "survey_policy": {"timing": timing, "consolidation": "deduplicate_by_question_id"},
             "timing_rules": {"delay_ms": 5},
-            "question_config": {"config_version": version, "items": [
+            "question_config": {"schema_version": "1.0.0", "study_id": study_id,
+                "question_set_version": version, "questions": [
                 {"question_id": "q-shared", "prompt": prompt, "answer_type": "single_choice", "required": True,
                  "order": 0, "options": [{"option_id": "yes", "label": "Yes"}]}]}}}
 
