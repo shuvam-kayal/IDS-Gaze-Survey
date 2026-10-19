@@ -10,6 +10,7 @@ const scenario = document.querySelector("#scenario");
 const status = document.querySelector("#status");
 const output = document.querySelector("#output");
 const report = document.querySelector("#report");
+const cameraError = document.querySelector("#camera-error");
 let config;
 let adapter;
 let captured = [];
@@ -41,6 +42,7 @@ async function load() {
 async function startCameraCapture() {
   if (!consent.checked) { setStatus("blocked: explicit demo consent is required"); return; }
   try {
+    cameraError.textContent = "";
     adapter = await createWebGazerAdapter({
       viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
     });
@@ -61,6 +63,7 @@ async function startCameraCapture() {
     stopCamera.disabled = false;
     submit.disabled = false;
   } catch (error) {
+    cameraError.textContent = `Initialization error: ${error.message}`;
     setStatus(`camera unavailable: ${error.message}`);
   }
 }
@@ -81,6 +84,7 @@ async function submitObservation() {
     y_px: sample.y_px === null ? null : sample.y_px * 100 / window.innerHeight,
   }));
   const requestId = `${selected}-${selected === "retry" ? "same" : Date.now()}`;
+  if (selected === "camera-denied") samples = [];
   if (selected === "invalid-sample") samples = syntheticSamples().map((sample) => ({ ...sample, x_px: 999 }));
   const response = await fetch("/v1/gaze/observations", {
     method: "POST", headers: { "content-type": "application/json" },

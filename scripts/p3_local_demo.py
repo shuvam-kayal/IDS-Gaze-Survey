@@ -15,7 +15,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.routing import APIRoute
 
 import services.api.app as api
@@ -27,6 +27,19 @@ from services.telemetry.persistence import TelemetryRepository
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "packages" / "gaze-provider-webgazer" / "smoke-test" / "p3-demo.html"
 BUNDLE = ROOT / "packages" / "gaze-provider-webgazer" / "smoke-test" / "dist" / "p3-demo.js"
+ASSET_ROOT = ROOT / "packages" / "gaze-provider-webgazer" / "smoke-test" / "mediapipe" / "face_mesh"
+MEDIAPIPE_ASSETS = frozenset(
+    {
+        "face_mesh_solution_packed_assets_loader.js",
+        "face_mesh_solution_packed_assets.data",
+        "face_mesh_solution_simd_wasm_bin.data",
+        "face_mesh_solution_simd_wasm_bin.js",
+        "face_mesh_solution_simd_wasm_bin.wasm",
+        "face_mesh_solution_wasm_bin.js",
+        "face_mesh_solution_wasm_bin.wasm",
+        "face_mesh.binarypb",
+    }
+)
 SESSION_ID = os.environ.get("P3_DEMO_SESSION_ID", "local-p3-demo-session")
 STUDY_ID = "study-product-evaluation"
 TRIAL_ID = "trial-study-product-0001"
@@ -168,6 +181,17 @@ def demo_bundle() -> FileResponse:
     return FileResponse(BUNDLE, media_type="text/javascript")
 
 
+@api.app.get("/mediapipe/face_mesh/{asset}", include_in_schema=False)
+def mediapipe_asset(asset: str) -> FileResponse:
+    """Serve only the pinned WebGazer FaceMesh runtime assets."""
+    if asset not in MEDIAPIPE_ASSETS:
+        raise HTTPException(404, "unknown FaceMesh asset")
+    path = ASSET_ROOT / asset
+    if not path.is_file():
+        raise HTTPException(404, "FaceMesh asset has not been built")
+    return FileResponse(path)
+
+
 @api.app.get("/__p3_demo/config", include_in_schema=False)
 def demo_config() -> dict[str, Any]:
     bootstrap = _load_example("session-bootstrap.json")
@@ -226,7 +250,21 @@ _original_ingest = api.ingest_gaze_observation
 
 def _demo_ingest(request: api.GazeObservationRequest):
     _select_repository(request.request_id)
-    return _original_ingest(request)
+    try:
+        return _original_ingest(request)
+    except RuntimeError as exc:
+        if request.request_id.startswith("persistence-failure-"):
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "schema_version": "1.0.0",
+                    "error": {
+                        "code": "demo_persistence_failure",
+                        "message": str(exc),
+                    },
+                },
+            )
+        raise
 
 
 for _route in api.app.router.routes:

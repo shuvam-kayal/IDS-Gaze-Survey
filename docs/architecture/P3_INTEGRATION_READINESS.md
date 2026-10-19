@@ -242,6 +242,7 @@ alembic current
 alembic heads
 npm test --prefix .\packages\gaze-provider-webgazer
 npm run build:smoke --prefix .\packages\gaze-provider-webgazer
+npm run build:p3-demo --prefix .\packages\gaze-provider-webgazer
 ```
 
 PostgreSQL persistence tests must be run against PostgreSQL 16 and must not be
@@ -299,3 +300,8 @@ mismatch (422), missing trusted context (503), injected FeatureRecord failure
 followed by retry recovery, and camera-denied/non-gaze fallback. Select
 `Exact retry` and submit twice to demonstrate the duplicate response. Camera
 mode remains provider-only and does not persist video or frames.
+
+The P3 launcher serves the explicit pinned FaceMesh allowlist under
+`/mediapipe/face_mesh/`; `build:p3-demo` runs the existing asset-copy helper
+before bundling. Camera startup errors are shown in the page and are not
+treated as successful capture merely because provider initialization resolves.

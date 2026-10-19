@@ -6,6 +6,8 @@ import { join } from "node:path";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const smokePage = join(packageRoot, "smoke-test", "index.html");
+const p3DemoPage = join(packageRoot, "smoke-test", "p3-demo.html");
+const p3DemoEntry = join(packageRoot, "src", "p3-demo-entry.js");
 
 test("smoke page reserves a control region above the WebGazer preview", async () => {
   const html = await readFile(smokePage, "utf8");
@@ -28,4 +30,15 @@ test("smoke page keeps the optional preview out of the control flow on small vie
 
   assert.match(html, /@media \(max-width: 700px\), \(max-height: 520px\)/);
   assert.match(html, /#webgazerVideoContainer\s*\{\s*display:\s*none !important;/);
+});
+
+test("P3 demo keeps fallback and camera errors explicit", async () => {
+  const html = await readFile(p3DemoPage, "utf8");
+  const source = await readFile(p3DemoEntry, "utf8");
+
+  assert.match(html, /id="reset"/);
+  assert.match(html, /value="camera-denied"/);
+  assert.match(html, /id="camera-error"/);
+  assert.match(source, /if \(selected === "camera-denied"\) samples = \[\];/);
+  assert.match(source, /Initialization error:/);
 });
