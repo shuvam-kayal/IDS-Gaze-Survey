@@ -25,15 +25,16 @@ valid predictions but no confidence is therefore marked low quality and does
 not produce gaze metrics; this is intentional missingness, not a fabricated
 confidence or measured zero.
 
-## Frozen-interface limitation
+## Approved camera lifecycle
 
-The frozen TypeScript interface requires P1 to provide a consented
-`MediaStream`, while WebGazer's public `begin()` API acquires the camera
-itself. This adapter therefore uses explicit caller consent as a start gate,
-but does not claim that it consumes the future P1-supplied stream. P1 and the
-integrator must approve a bridge decision before production wiring: either
-authorize WebGazer's post-consent acquisition or add a supported stream-injection
-interface. No frozen contract was changed here.
+The approved lifecycle keeps research consent, participant UI, session
+withdrawal, and teardown in P1. P1 calls the provider only with
+`consent_granted: true` and initial geometry; it does not supply a mandatory
+`MediaStream`. WebGazer's supported public `begin()` acquires the provider-owned
+camera stream, and provider cleanup calls `stopVideo()` before `end()` so the
+provider releases that stream. The adapter never uses WebGazer's private
+`init(stream)` method. A future provider that requires an externally supplied
+stream needs a separate reviewed contract decision.
 
 ## Test-only mock-P1 harness
 
