@@ -1,0 +1,9 @@
+{
+  "fixture": "synthetic_feature_records.json",
+  "request": "analysis_request.json",
+  "expected": {
+    "response_time_ms": {"kind": "numeric", "n": 6, "mean": 1031.6666666666667, "median": 995.0, "missing_n": 0, "unit": "ms"},
+    "completion": {"kind": "numeric", "n": 6, "mean": 0.6666666666666666, "median": 1.0, "missing_n": 0, "unit": "boolean"},
+    "condition": {"kind": "categorical", "n": 6, "counts": {"A": 3, "B": 3}, "missing_n": 0}
+  }
+}
