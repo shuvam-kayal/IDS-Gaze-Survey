@@ -8,6 +8,7 @@ A research platform intended to combine survey responses, browser interaction te
 - Run `docker compose up --build`.
 - Check `http://localhost:8000/health` and `http://localhost:8000/docs`.
 - For checks, see [Local development](docs/setup/LOCAL_DEVELOPMENT.md).
+- On Linux, if Docker reports permission denied for `/var/run/docker.sock`, see the [Docker permissions note](docs/setup/LOCAL_DEVELOPMENT.md#docker-permissions).
 
 ## Team ownership
 
