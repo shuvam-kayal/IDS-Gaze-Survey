@@ -1,8 +1,23 @@
 """Extended Person 4 inference and ML evaluation primitives (standard library only)."""
 from __future__ import annotations
-import math, random, statistics, hashlib
+
+import hashlib
+import math
+import random
+import statistics
 from collections import Counter, defaultdict
-from .engine import AnalysisError, finite, is_gaze, tp, split_groups, quality_for, incompatible_units, parts
+
+from .engine import (
+    AnalysisError,
+    finite,
+    incompatible_units,
+    is_gaze,
+    parts,
+    quality_for,
+    split_groups,
+    tp,
+)
+
 
 def numeric_value(raw):
     return raw.get('value') if isinstance(raw,dict) else raw
@@ -253,7 +268,6 @@ def _subgroup_audit(test_rows,y,pred,numeric,field):
     return {'field':field,'groups':out,'caveat':'Exploratory sample-specific performance differences; not a fairness certification.'}
 
 def _fit_predict(model,xtrain,ytrain,xtest,seed,alpha=1.):
-    labels=sorted(set(map(str,ytrain)))
     if model in {'majority','mean'}:
         if all(isinstance(y,(int,float)) and not isinstance(y,bool) for y in ytrain):
             pred=[statistics.fmean(ytrain)]*len(xtest); return pred,None,{'kind':'mean_predictor'}
@@ -381,9 +395,9 @@ def modality_comparison(records,parameters):
 def kmeans(records,parameters,policy='best_available'):
     names=parameters.get('features') or []; k=max(2,min(8,int(parameters.get('n_clusters',3)))); seed=int(parameters.get('seed',0))
     if not names:return {'status':'insufficient_data','reason':'Select numeric clustering features'}
-    rows, dropped, _, _=_dataset(records,names[0],names,policy,parameters)
+    rows, _dropped, _, _=_dataset(records,names[0],names,policy,parameters)
     if len(rows)<k:return {'status':'insufficient_data','reason':'Fewer usable rows than clusters','n':len(rows)}
-    x,_,means,sds,medians=_prep(rows,rows,names,[n for n in names if any(is_gaze(n,feature_modality(n,r['record'].get('features',{}).get(n))) for r in rows)])
+    x,_,means,sds,_medians=_prep(rows,rows,names,[n for n in names if any(is_gaze(n,feature_modality(n,r['record'].get('features',{}).get(n))) for r in rows)])
     if len(x)<k:return {'status':'insufficient_data','reason':'Too few rows with required gaze features','n':len(x)}
     rng=random.Random(seed); centers=[x[i][:] for i in rng.sample(range(len(x)),k)]; labels=[0]*len(x)
     for _ in range(100):

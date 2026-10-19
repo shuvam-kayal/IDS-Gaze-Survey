@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/p4/heatmap-input.v1.schema.json",
+  "title": "P4 HeatmapInput",
+  "description": "Separately authorized coordinate and geometry data; never a field on FeatureRecord v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "study_id", "feature_record_id", "session_id", "geometry_snapshot_id", "coordinate_system", "quality", "points", "geometry_version", "aoi_geometry"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "study_id": {"type": "string", "minLength": 1},
+    "feature_record_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "geometry_snapshot_id": {"type": "string", "minLength": 1},
+    "coordinate_system": {"type": "string", "minLength": 1},
+    "quality": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "points": {"type": "array", "items": {"type": "object", "required": ["x", "y"], "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "additionalProperties": false}},
+    "geometry_version": {"type": ["string", "null"]},
+    "aoi_geometry": {"type": ["object", "array"]}
+  }
+}

@@ -1,7 +1,11 @@
 """Additional transparent, modality-aware P4 analytics capabilities."""
 from __future__ import annotations
-import math, random, statistics
-from collections import Counter,defaultdict
+
+import math
+import random
+import statistics
+from collections import Counter, defaultdict
+
 from .engine import AnalysisError, finite, is_gaze, parts, quality_for
 
 # Registry metadata is intentionally declarative: integrations can inspect task and
@@ -16,7 +20,7 @@ MODEL_REGISTRY={
 
 def predict_with_saved_result(result,records):
  """Reuse stored fitted linear/logistic model metadata on new FeatureRecords."""
- from .engine import is_gaze,parts,quality_for
+ from .engine import is_gaze, parts, quality_for
  experiment=result.get('results',{}).get('ml_experiment',{}).get('experiment',{})
  fitted=result.get('results',{}).get('ml_experiment',{}).get('baseline_comparison',{})
  predictors=experiment.get('predictors') or []; policy=experiment.get('modality_policy','best_available');norm=experiment.get('normalization',{});means=norm.get('mean',{});sds=norm.get('sd',{});medians=norm.get('training_medians',{})
@@ -62,7 +66,7 @@ def anomaly_detection(records,p,policy='best_available'):
  features=p.get('features') or ([p['feature']] if p.get('feature') else [])
  threshold=float(p.get('robust_z_threshold',3.5)); quality=float(p.get('gaze_min_quality',.5))
  if not features or not math.isfinite(threshold) or threshold<=0:raise AnalysisError('invalid_anomaly_settings','Select features and a positive robust_z_threshold')
- result={}; flagged={}
+ result={}
  for name in features:
   rows,dropped=_values(records,name,policy,quality); vals=[x[0] for x in rows]
   units={unit for _,unit,_ in rows}
@@ -164,7 +168,7 @@ def temporal_analysis(records,p,policy='best_available'):
  for value,unit,rec in rows:
   stamp=rec.get(time_field)
   if not stamp:continue
-  try:t=datetime.fromisoformat(str(stamp).replace('Z','+00:00')).timestamp()
+  try:t=datetime.fromisoformat(str(stamp)).timestamp()
   except ValueError:continue
   group=str(rec.get('session_id') or rec.get('participant_id') or 'all');by[group].append((t,value,unit))
  trends={}
@@ -227,5 +231,5 @@ def model_selection(records,p,policy='best_available'):
    except AnalysisError as e:runs.append({'model':model,'alpha':alpha,'status':'unsupported','reason':str(e)})
  valid=[r for r in runs if r['status']=='succeeded']
  if not valid:return {'status':'insufficient_data','candidates':[{k:v for k,v in r.items() if k!='result'} for r in runs],'reason':'No candidate model could be evaluated'}
- lower_is_better=valid[0]['metric']=='rmse';best=sorted(valid,key=lambda r:(r['value'] if lower_is_better else -r['value'],r['model'],r['alpha']))[0]
+ lower_is_better=valid[0]['metric']=='rmse';best=min(valid,key=lambda r:(r['value'] if lower_is_better else -r['value'],r['model'],r['alpha']))
  return {'status':'succeeded','selection_criterion':best['metric'],'best_model':best['model'],'best_alpha':best['alpha'],'best_value':best['value'],'selected_result':best['result'],'candidates':[{k:v for k,v in r.items() if k!='result'} for r in runs],'warning':'Selection uses the held-out evaluation score and is optimistic; use nested grouped CV for confirmatory model comparison.'}

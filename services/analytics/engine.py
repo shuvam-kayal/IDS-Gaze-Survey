@@ -1,10 +1,16 @@
 """Person 4 analytics engine: validated FeatureRecord input, modality-aware statistics, reports and persistence."""
 from __future__ import annotations
-import base64,hashlib,json,math,random,re,statistics,sqlite3,uuid
-from contextlib import contextmanager
-from collections import Counter,defaultdict
-from datetime import datetime,timezone
-from pathlib import Path
+
+import hashlib
+import json
+import math
+import random
+import re
+import statistics
+import uuid
+from collections import Counter, defaultdict
+from datetime import UTC, datetime
+
 ANALYSIS_VERSION='p4-analytics/1.0.0'
 SUPPORTED={'descriptive','correlation','group_comparison','paired_comparison','multiple_comparison','baseline','ml_experiment','modality_comparison','clustering','aoi_summary','aoi_comparison','discrepancy','gaze_interaction_comparison','attention_importance_comparison','heatmap','report','anomaly_detection','dimensionality_reduction','feature_selection','outlier_generation','temporal_analysis','cross_validation','model_selection'}
 GAZE_WORDS=('gaze','fixation','dwell','ttff','attention','aoi','scanpath','saccade','heatmap')
@@ -61,7 +67,7 @@ def validate_result(r):
  if r['data_scope']['study_id']!=r['study_id'] or not all(isinstance(r['data_scope'][k],str) for k in ('feature_set_version','record_fingerprint')) or not isinstance(r['data_scope']['feature_versions'],list) or not isinstance(r['data_scope']['record_n'],int) or r['data_scope']['record_n']<0:raise AnalysisError('invalid_result','AnalysisResult data scope has invalid field types or inconsistent Study ID','failed')
  if r['metadata']['modality'] not in {'gaze','non_gaze','mixed'} or r['metadata']['modality_policy'] not in {'best_available','gaze_only','non_gaze_only'} or not isinstance(r['metadata']['sample_size'],int) or r['metadata']['sample_size']<0 or not isinstance(r['metadata']['unique_unit_n'],int) or r['metadata']['unique_unit_n']<0 or not isinstance(r['metadata']['feature_names'],list) or not isinstance(r['metadata']['gaze_values_excluded'],int):raise AnalysisError('invalid_result','AnalysisResult metadata contains invalid values','failed')
  if not isinstance(r['warnings'],list) or not all(isinstance(x,str) for x in r['warnings']) or not isinstance(r['limitations'],list) or not all(isinstance(x,str) for x in r['limitations']):raise AnalysisError('invalid_result','AnalysisResult warnings and limitations must be string arrays','failed')
- try:datetime.fromisoformat(str(r['generated_at']).replace('Z','+00:00'))
+ try:datetime.fromisoformat(str(r['generated_at']))
  except (ValueError,TypeError):raise AnalysisError('invalid_result','AnalysisResult generated_at must be an ISO-8601 timestamp','failed')
  return r
 def scope_records(records,req):
@@ -84,8 +90,8 @@ def filter_records(records,params):
  def dt(value,label):
   if value is None:return None
   try:
-   parsed=datetime.fromisoformat(str(value).replace('Z','+00:00'))
-   return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+   parsed=datetime.fromisoformat(str(value))
+   return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
   except (ValueError,OverflowError):raise AnalysisError('invalid_filters',label+' must be an ISO-8601 timestamp')
  start=dt(f.get('time_from'),'time_from'); end=dt(f.get('time_to'),'time_to')
  if start and end and start>end:raise AnalysisError('invalid_filters','time_from must not be after time_to')
@@ -176,7 +182,7 @@ def aggregate_rows(rows,unit):
   observed=[v['value'] for v in values if v['value'] is not None]
   if observed and all(finite(v) for v in observed):value=statistics.fmean(float(v) for v in observed)
   elif observed:
-   counts=Counter(map(str,observed)); value=sorted(k for k,n in counts.items() if n==max(counts.values()))[0]
+   counts=Counter(map(str,observed)); value=min(k for k,n in counts.items() if n==max(counts.values()))
   else:value=None
   first=values[0]; out.append({**first,'value':value,'group':identity,'row':identity,'source_observation_n':len(values),'source_missing_n':len(values)-len(observed),'record':first['record']})
  return out
@@ -275,7 +281,7 @@ def aoi_summary(fields,records=None):
  for name,rs in fields.items():
   for r in rs:
    if not finite(r['value']):continue
-   aid=r['aoi_id'] or r['record'].get('aoi_id'); m=re.search(r'aoi[:_.-]([^:_.-]+)',name,re.I)
+   aid=r['aoi_id'] or r['record'].get('aoi_id'); m=re.search(r'aoi[:_.-]([^:_.-]+)',name,re.IGNORECASE)
    if not aid and m:aid=m.group(1)
    if aid and any(x in name.lower() for x in ('dwell','ttff','revisit','fixation','attention')):
     metric=name; aois[str(aid)][metric].append({'value':float(r['value']),'unit':r.get('unit')})
@@ -393,8 +399,24 @@ def readiness(fields):
   if outliers:warnings.append(f'{name} has {outliers} IQR-rule outlier candidate(s); inspect before analysis (not excluded automatically)')
  return {'features':quality,'warnings':warnings}
 def analyze(request,feature_records=None):
- from .advanced import paired_comparison, compare_many, aoi_comparison, run_experiment, modality_comparison, kmeans, histogram
- from .capabilities import anomaly_detection,dimensionality_reduction,feature_selection,outlier_generation,temporal_analysis,cross_validation,model_selection
+ from .advanced import (
+  aoi_comparison,
+  compare_many,
+  histogram,
+  kmeans,
+  modality_comparison,
+  paired_comparison,
+  run_experiment,
+ )
+ from .capabilities import (
+  anomaly_detection,
+  cross_validation,
+  dimensionality_reduction,
+  feature_selection,
+  model_selection,
+  outlier_generation,
+  temporal_analysis,
+ )
  req=validate_request(request); records=req['feature_records'] if feature_records is None else feature_records
  if not isinstance(records,list):raise AnalysisError('invalid_feature_records','feature_records must be a list')
  records,sw=scope_records(records,req)
@@ -472,45 +494,6 @@ def analyze(request,feature_records=None):
   component=results.get(analysis_type,{})
   if isinstance(component,dict) and component.get('status') not in (None,'succeeded'):partial_types.append(analysis_type)
  if partial_types:warnings.append('Some requested analyses were unavailable, insufficient or unsupported: '+', '.join(partial_types))
- result={'schema_version':'1.0.0','result_id':str(uuid.uuid4()),'request_id':req['request_id'],'request_fingerprint':request_fingerprint,'study_id':req['study_id'],'status':'no_data' if not records else 'insufficient_data' if selected_n==0 else 'succeeded','analysis_version':ANALYSIS_VERSION,'generated_at':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),'data_scope':{'study_id':req['study_id'],'feature_set_version':req['feature_set_version'],'record_n':len(records),'record_fingerprint':fingerprint,'feature_versions':versions,'analysis_types':req['analysis_types'],'filter_summary':filter_summary,'analysis_parameters':{k:v for k,v in req['parameters'].items() if k!='filters' and not any(token in k.lower() for token in ('participant_id','session_id','record_id'))}},'metadata':{'modality':modality,'modality_policy':req['modality_policy'],'sample_size':selected_n,'selected_record_n':selected_n,'analysis_unit':p.get('summary_unit','feature_record'),'independent_unit':'participant' if selected_records and all(r.get('participant_id') for r in selected_records) else 'session_or_record','unique_unit_n':len(selected_units),'feature_names':meta['feature_names'],'gaze_values_excluded':meta['gaze_values_excluded'],'gaze_low_quality_excluded':meta['gaze_low_quality_excluded'],'gaze_quality_missing_n':meta['gaze_quality_missing_n'],'gaze_min_quality':meta['gaze_min_quality'],'result_completeness':'partial' if partial_types else 'complete','partial_analysis_types':partial_types,'validation_strategy':'participant/session group holdout for baseline'},'results':results,'warnings':warnings,'limitations':limitations}
+ result={'schema_version':'1.0.0','result_id':str(uuid.uuid4()),'request_id':req['request_id'],'request_fingerprint':request_fingerprint,'study_id':req['study_id'],'status':'no_data' if not records else 'insufficient_data' if selected_n==0 else 'succeeded','analysis_version':ANALYSIS_VERSION,'generated_at':datetime.now(UTC).isoformat().replace('+00:00','Z'),'data_scope':{'study_id':req['study_id'],'feature_set_version':req['feature_set_version'],'record_n':len(records),'record_fingerprint':fingerprint,'feature_versions':versions,'analysis_types':req['analysis_types'],'filter_summary':filter_summary,'analysis_parameters':{k:v for k,v in req['parameters'].items() if k!='filters' and not any(token in k.lower() for token in ('participant_id','session_id','record_id'))}},'metadata':{'modality':modality,'modality_policy':req['modality_policy'],'sample_size':selected_n,'selected_record_n':selected_n,'analysis_unit':p.get('summary_unit','feature_record'),'independent_unit':'participant' if selected_records and all(r.get('participant_id') for r in selected_records) else 'session_or_record','unique_unit_n':len(selected_units),'feature_names':meta['feature_names'],'gaze_values_excluded':meta['gaze_values_excluded'],'gaze_low_quality_excluded':meta['gaze_low_quality_excluded'],'gaze_quality_missing_n':meta['gaze_quality_missing_n'],'gaze_min_quality':meta['gaze_min_quality'],'result_completeness':'partial' if partial_types else 'complete','partial_analysis_types':partial_types,'validation_strategy':'participant/session group holdout for baseline'},'results':results,'warnings':warnings,'limitations':limitations}
  if 'report' in req['analysis_types']:result['report']=make_report(req,result)
  return validate_result(result)
-class ResultStore:
- """SQLite local result store. Production deployments should inject the shared result-store repository."""
- def __init__(self,path):
-  self.path=str(path); Path(self.path).parent.mkdir(parents=True,exist_ok=True)
-  with self.connect() as db:db.execute('CREATE TABLE IF NOT EXISTS analysis_results(result_id TEXT PRIMARY KEY,request_id TEXT NOT NULL,study_id TEXT NOT NULL,created_at TEXT NOT NULL,payload TEXT NOT NULL, UNIQUE(request_id,study_id))'); db.execute('CREATE INDEX IF NOT EXISTS ix_results_study_created ON analysis_results(study_id,created_at)')
- @contextmanager
- def connect(self):
-  db=sqlite3.connect(self.path,timeout=10); db.row_factory=sqlite3.Row
-  try:
-   yield db
-   db.commit()
-  finally: db.close()
- def save(self,r):
-  with self.connect() as db:db.execute('INSERT OR IGNORE INTO analysis_results VALUES(?,?,?,?,?)',(r['result_id'],r['request_id'],r['study_id'],r['generated_at'],json.dumps(r,sort_keys=True,separators=(',',':'))))
- def get(self,rid):
-  with self.connect() as db:row=db.execute('SELECT payload FROM analysis_results WHERE result_id=?',(rid,)).fetchone()
-  return json.loads(row['payload']) if row else None
- def get_by_request(self,request_id,study_id):
-  with self.connect() as db:row=db.execute('SELECT payload FROM analysis_results WHERE request_id=? AND study_id=? ORDER BY created_at DESC LIMIT 1',(request_id,study_id)).fetchone()
-  return json.loads(row['payload']) if row else None
- def list(self,sid,limit=50):
-  limit=max(1,min(int(limit),200))
-  with self.connect() as db:rows=db.execute('SELECT payload FROM analysis_results WHERE study_id=? ORDER BY created_at DESC LIMIT ?',(sid,limit)).fetchall()
-  return [json.loads(r['payload']) for r in rows]
- def list_page(self,sid,limit=50,cursor=None):
-  limit=max(1,min(int(limit),100)); params=[sid]; where='study_id=?'
-  if cursor:
-   try:
-    created,rid=base64.urlsafe_b64decode(cursor.encode()).decode().split('\0',1)
-    datetime.fromisoformat(created.replace('Z','+00:00')); uuid.UUID(rid)
-   except (ValueError,UnicodeError,TypeError):raise AnalysisError('invalid_cursor','cursor is malformed')
-   where+=' AND (created_at < ? OR (created_at = ? AND result_id < ?))'; params.extend([created,created,rid])
-  params.append(limit+1)
-  with self.connect() as db:rows=db.execute(f'SELECT result_id,created_at,payload FROM analysis_results WHERE {where} ORDER BY created_at DESC,result_id DESC LIMIT ?',params).fetchall()
-  more=len(rows)>limit; rows=rows[:limit]; payloads=[json.loads(r['payload']) for r in rows]; next_cursor=None
-  if more and rows:
-   last=rows[-1]; next_cursor=base64.urlsafe_b64encode((last['created_at']+'\0'+last['result_id']).encode()).decode()
-  result_rows=[{'result_id':r.get('result_id'),'request_id':r.get('request_id'),'study_id':r.get('study_id'),'generated_at':r.get('generated_at'),'status':r.get('status'),'analysis_version':r.get('analysis_version'),'schema_version':r.get('schema_version'),'data_scope':{'feature_set_version':r.get('data_scope',{}).get('feature_set_version'),'analysis_types':r.get('data_scope',{}).get('analysis_types')},'metadata':{k:r.get('metadata',{}).get(k) for k in ('modality','modality_policy','sample_size','unique_unit_n','result_completeness')}} for r in payloads]
-  return {'results':result_rows,'next_cursor':next_cursor,'limit':limit}

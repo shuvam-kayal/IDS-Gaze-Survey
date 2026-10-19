@@ -1,13 +1,9 @@
 import json
-import tempfile
 import unittest
-import threading
-import time
-from unittest.mock import patch
-from http.server import ThreadingHTTPServer
-from urllib.request import Request, urlopen
 from pathlib import Path
-from services.analytics.engine import AnalysisError, ResultStore, analyze
+
+from services.analytics.engine import AnalysisError, analyze
+
 ROOT=Path(__file__).resolve().parents[1]
 FIXTURE=json.loads((ROOT/'fixtures'/'synthetic_feature_records.json').read_text(encoding='utf-8-sig'))
 def request(types,policy='best_available',params=None,records=None):
@@ -61,7 +57,7 @@ class AnalyticsTests(unittest.TestCase):
   cv=run('cross_validation',{'target':'outcome','features':['x','z'],'task':'regression','models':['ridge'],'folds':3,'seed':3});self.assertEqual(cv['status'],'succeeded')
   chosen=run('model_selection',{'target':'outcome','features':['x','z'],'task':'regression','candidate_models':['ridge','ensemble'],'alpha_grid':[.1,1.],'seed':3});self.assertEqual(chosen['status'],'succeeded');self.assertIn(chosen['best_model'],{'ridge','ensemble'});self.assertEqual(chosen['validation_strategy'],'nested_grouped_cross_validation')
  def test_saved_model_registry_and_reuse(self):
-  from services.analytics.capabilities import MODEL_REGISTRY,predict_with_saved_result
+  from services.analytics.capabilities import MODEL_REGISTRY, predict_with_saved_result
   records=[]
   for i in range(12):records.append({'record_id':f'm{i}','participant_id':f'mp{i}','study_id':'study-demo-001','feature_set_version':'1.0.0','modality':['survey'],'features':{'x':float(i),'y':float(i*2)}})
   result=analyze(request(['ml_experiment'],'non_gaze_only',{'target':'y','features':['x'],'task':'regression','models':['ridge']},records))
@@ -77,22 +73,6 @@ class AnalyticsTests(unittest.TestCase):
   out=analyze(request(['report']))
   self.assertIn('descriptive',out['results']); self.assertEqual(out['report']['study_scope']['study_id'],'study-demo-001')
   self.assertTrue(all('evidence' in r for r in out['report']['recommendations']))
- def test_store_round_trip(self):
-  result=analyze(request(['descriptive']))
-  with tempfile.TemporaryDirectory() as d:
-   store=ResultStore(Path(d)/'results.sqlite3'); store.save(result)
-   self.assertEqual(store.get(result['result_id'])['request_id'],'req-test')
-   self.assertEqual(len(store.list('study-demo-001')),1)
- def test_result_history_keyset_pagination(self):
-  with tempfile.TemporaryDirectory() as d:
-   store=ResultStore(Path(d)/'page.sqlite3')
-   for i in range(5):
-    r=analyze(request(['descriptive'],records=FIXTURE)); r['request_id']=f'page-{i}'; r['result_id']=__import__('uuid').uuid4().__str__(); store.save(r)
-   first=store.list_page('study-demo-001',2); second=store.list_page('study-demo-001',2,first['next_cursor']); third=store.list_page('study-demo-001',2,second['next_cursor'])
-   ids=[r['result_id'] for p in (first,second,third) for r in p['results']]
-   self.assertEqual(len(ids),5); self.assertEqual(len(set(ids)),5); self.assertIsNone(third['next_cursor'])
-   self.assertNotIn('results',first['results'][0]); self.assertIn('metadata',first['results'][0])
-   with self.assertRaises(AnalysisError):store.list_page('study-demo-001',2,'bad-cursor')
  def test_histograms_and_filter_summary(self):
   out=analyze(request(['descriptive'],'non_gaze_only',{'filters':{'participant_ids':['p01','p02']}}))
   s=out['results']['descriptive']['response_time_ms']; self.assertEqual(s['n'],2); self.assertEqual(sum(s['histogram']['counts']),2)
@@ -238,57 +218,3 @@ class AnalyticsTests(unittest.TestCase):
   self.assertEqual(analyze(req)['data_scope']['filter_summary']['selected_record_n'],6)
   req['parameters']['filters']={'time_from':'not-a-date'}
   with self.assertRaises(AnalysisError):analyze(req)
- def test_http_job_retrieval_csv_and_history(self):
-  from services.analytics.server import Handler
-  with tempfile.TemporaryDirectory() as d:
-   class TestHandler(Handler):
-    store=ResultStore(Path(d)/'http.sqlite3')
-    jobs={}; jobs_lock=threading.Lock()
-   http=ThreadingHTTPServer(('127.0.0.1',0),TestHandler); thread=threading.Thread(target=http.serve_forever,daemon=True); thread.start(); base=f'http://127.0.0.1:{http.server_port}'
-   try:
-    body=json.dumps(request(['descriptive'],records=FIXTURE)).encode(); res=urlopen(Request(base+'/v1/analytics/jobs',body,{'Content-Type':'application/json'})); job=json.load(res); self.assertEqual(res.status,202)
-    for _ in range(80):
-     try:job=json.load(urlopen(base+'/v1/analytics/jobs/'+job['job_id']))
-     except Exception:time.sleep(.02); continue
-     if job['status'] in {'succeeded','failed'}:break
-     time.sleep(.02)
-    self.assertEqual(job['status'],'succeeded')
-    result=json.load(urlopen(base+'/v1/analytics/results/'+job['result_id'])); self.assertEqual(result['status'],'succeeded')
-    replay=urlopen(Request(base+'/v1/analytics/jobs',body,{'Content-Type':'application/json'})); self.assertEqual(replay.status,200); self.assertEqual(json.load(replay)['result_id'],job['result_id'])
-    csv_response=urlopen(base+'/v1/analytics/results/'+job['result_id']+'.csv'); self.assertIn('text/csv',csv_response.headers['Content-Type']); self.assertIn(b'response_time_ms',csv_response.read())
-    history=json.load(urlopen(base+'/v1/analytics/results?study_id=study-demo-001')); self.assertEqual(len(history['results']),1)
-    self.assertNotIn('results',history['results'][0])
-    second_records=[dict(r,features={**r['features'],'response_time_ms':{**r['features']['response_time_ms'],'value':r['features']['response_time_ms']['value']+10}}) for r in FIXTURE]
-    second_req=request(['descriptive'],records=second_records); second_req['request_id']='req-second'; second=analyze(second_req); TestHandler.store.save(second)
-    compared=json.load(urlopen(base+'/v1/analytics/compare?left_id='+job['result_id']+'&right_id='+second['result_id'])); self.assertEqual(compared['status'],'comparable'); self.assertAlmostEqual(compared['descriptive_mean_differences']['response_time_ms']['mean_delta'],10)
-    timed_records=[dict(r,occurred_at='2026-05-01T00:00:00Z') for r in FIXTURE]
-    timed=request(['descriptive'],'non_gaze_only',{'filters':{'time_from':'2026-05-01T00:00:00Z'}},timed_records); timed['request_id']='req-timed'; timed_result=analyze(timed); TestHandler.store.save(timed_result)
-    incomparable=json.load(urlopen(base+'/v1/analytics/compare?left_id='+job['result_id']+'&right_id='+timed_result['result_id'])); self.assertEqual(incomparable['status'],'not_comparable'); self.assertIn('filter/time selection differs',incomparable['reasons'])
-   finally:http.shutdown(); http.server_close(); thread.join(timeout=2)
- def test_server_timeout_is_exposed_as_failed_job(self):
-  from services.analytics import server
-  finished=threading.Event()
-  def slow_analysis(req):
-   finished.wait(timeout=2)
-   return analyze(req)
-  with tempfile.TemporaryDirectory() as d:
-   class TimeoutHandler(server.Handler):
-    store=ResultStore(Path(d)/'timeout.sqlite3')
-    jobs={}; jobs_lock=threading.Lock(); job_timers={}; job_timeout_seconds=.05
-    executor=server.ThreadPoolExecutor(max_workers=1)
-   http=ThreadingHTTPServer(('127.0.0.1',0),TimeoutHandler); thread=threading.Thread(target=http.serve_forever,daemon=True); thread.start(); base=f'http://127.0.0.1:{http.server_port}'
-   try:
-    body=json.dumps(request(['descriptive'])).encode()
-    with patch('services.analytics.server.analyze',side_effect=slow_analysis):
-     job=json.load(urlopen(Request(base+'/v1/analytics/jobs',body,{'Content-Type':'application/json'})))
-     deadline=time.monotonic()+1
-     while time.monotonic()<deadline:
-      state=json.load(urlopen(base+'/v1/analytics/jobs/'+job['job_id']))
-      if state['status']=='failed':break
-      time.sleep(.01)
-     self.assertEqual(state['status'],'failed'); self.assertEqual(state['error']['code'],'analysis_timeout')
-     finished.set(); time.sleep(.05)
-     self.assertIsNone(TimeoutHandler.store.get_by_request('req-test','study-demo-001'))
-   finally:
-    finished.set(); http.shutdown(); http.server_close(); thread.join(timeout=2); TimeoutHandler.executor.shutdown(wait=True,cancel_futures=True)
-if __name__=='__main__': unittest.main()
