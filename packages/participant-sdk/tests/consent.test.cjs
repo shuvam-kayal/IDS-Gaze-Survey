@@ -146,9 +146,150 @@ test("camera failure keeps research participation available without gaze", async
     initialGeometry: { schema_version: "1.0.0" },
     onSample() {},
   });
-  assert.deepEqual(result, { modality: "non_gaze_only", permission: "denied" });
+  assert.equal(result.modality, "non_gaze_only");
+  assert.equal(result.permission, "denied");
+  assert.equal(result.status, "denied");
   assert.equal(controller.canCollectResearch, true);
   assert.equal(controller.canCaptureCamera, false);
+});
+
+test("camera permission errors are classified and remain on the non-gaze path", async () => {
+  const { ConsentLifecycle } = await import("../src/consent-lifecycle.js");
+  for (const [name, status, permission, missingness] of [
+    ["NotAllowedError", "denied", "denied", "gaze.permission_denied"],
+    ["NotFoundError", "unplugged", "unavailable", "gaze.camera_unavailable"],
+    ["NotReadableError", "interrupted", "interrupted", "gaze.capture_interrupted"],
+  ]) {
+    const controller = new ConsentLifecycle({ policy, persistConsent: async () => {}, flushWithdrawalAudit: async () => {}, clock: () => fixedTime });
+    await controller.recordResearchConsent("accepted");
+    await controller.recordCameraConsent("accepted");
+    let starts = 0;
+    const result = await controller.startCamera({
+      sessionId: `session-${name}`,
+      mediaDevices: { getUserMedia: async () => { throw Object.assign(new Error(name), { name }); } },
+      provider: { start: async () => { starts += 1; }, stop() {} },
+      initialGeometry: { schema_version: "1.0.0" },
+      onSample() {},
+    });
+    assert.equal(result.status, status);
+    assert.equal(result.permission, permission);
+    assert.equal(result.modality, "non_gaze_only");
+    assert.equal(controller.snapshot().camera.missingness, missingness);
+    assert.equal(starts, 0);
+    assert.equal(controller.canCollectResearch, true);
+    assert.equal(controller.canCaptureCamera, false);
+  }
+});
+
+test("unsupported camera APIs and provider startup failures fall back without blocking research", async () => {
+  const { ConsentLifecycle } = await import("../src/consent-lifecycle.js");
+  const makeConsented = async () => {
+    const instance = new ConsentLifecycle({ policy, persistConsent: async () => {}, flushWithdrawalAudit: async () => {}, clock: () => fixedTime });
+    await instance.recordResearchConsent("accepted");
+    await instance.recordCameraConsent("accepted");
+    return instance;
+  };
+  const unsupported = await makeConsented();
+  const unsupportedResult = await unsupported.startCamera({ sessionId: "session-unsupported", mediaDevices: undefined, provider: { start: async () => {}, stop() {} }, initialGeometry: {}, onSample() {} });
+  assert.equal(unsupportedResult.status, "unsupported");
+  assert.equal(unsupportedResult.modality, "non_gaze_only");
+  assert.equal(unsupported.canCollectResearch, true);
+
+  const failed = await makeConsented();
+  let stopped = 0;
+  const track = { stop() { stopped += 1; } };
+  const failedResult = await failed.startCamera({
+    sessionId: "session-provider-failure",
+    mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getVideoTracks: () => [track] }) },
+    provider: { start: async () => { throw new Error("provider unavailable"); }, stop() {} },
+    initialGeometry: {},
+    onSample() {},
+  });
+  assert.equal(failedResult.status, "provider_failed");
+  assert.equal(failedResult.modality, "non_gaze_only");
+  assert.equal(failedResult.reason, "gaze.provider_failure");
+  assert.equal(stopped, 1);
+  assert.equal(failed.canCollectResearch, true);
+  assert.equal(failed.canCaptureCamera, false);
+});
+
+test("provider receives only a revocable track capability; device removal stops capture and falls back", async () => {
+  const { ConsentLifecycle } = await import("../src/consent-lifecycle.js");
+  const controller = new ConsentLifecycle({ policy, persistConsent: async () => {}, flushWithdrawalAudit: async () => {}, clock: () => fixedTime });
+  await controller.recordResearchConsent("accepted");
+  await controller.recordCameraConsent("accepted");
+  let ended;
+  const track = { readyState: "live", stop() { this.readyState = "ended"; }, addEventListener(_name, callback) { ended = callback; }, removeEventListener() {} };
+  const listeners = new Map();
+  const mediaDevices = {
+    async getUserMedia() { return { getTracks: () => [track], getVideoTracks: () => [track] }; },
+    addEventListener(name, callback) { listeners.set(name, callback); },
+    removeEventListener(name) { listeners.delete(name); },
+  };
+  let input;
+  let providerStops = 0;
+  const uiStates = [];
+  await controller.startCamera({
+    sessionId: "session-device-removal",
+    mediaDevices,
+    provider: { async start(value) { input = value; }, stop() { providerStops += 1; } },
+    initialGeometry: { schema_version: "1.0.0" },
+    onSample() {},
+    onCameraStatus: (state) => uiStates.push(state),
+  });
+  assert.equal(Object.hasOwn(input, "camera_stream"), false);
+  assert.equal(input.camera_source.isActive(), true);
+  assert.equal(input.camera_source.getVideoTrack(), track);
+  track.readyState = "ended";
+  listeners.get("devicechange")();
+  assert.equal(providerStops, 1);
+  assert.equal(input.camera_source.getVideoTrack(), null);
+  assert.equal(controller.snapshot().camera.status, "unplugged");
+  assert.equal(controller.snapshot().camera.modality, "non_gaze_only");
+  assert.equal(uiStates.at(-1).status, "unplugged");
+});
+
+test("an interrupted track and revoked permission stop the adapter immediately", async () => {
+  const { ConsentLifecycle } = await import("../src/consent-lifecycle.js");
+  for (const mode of ["interrupted", "revoked"]) {
+    const controller = new ConsentLifecycle({ policy, persistConsent: async () => {}, flushWithdrawalAudit: async () => {}, clock: () => fixedTime });
+    await controller.recordResearchConsent("accepted");
+    await controller.recordCameraConsent("accepted");
+    let trackEnded;
+    let permissionChanged;
+    let providerStops = 0;
+    let latestCameraState;
+    const track = { readyState: "live", stop() { this.readyState = "ended"; }, addEventListener(_name, callback) { trackEnded = callback; }, removeEventListener() {} };
+    const permission = {
+      state: "granted",
+      addEventListener(_name, callback) { permissionChanged = callback; },
+      removeEventListener() {},
+    };
+    const input = {
+      sessionId: `session-${mode}`,
+      mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getVideoTracks: () => [track] }) },
+      permissions: { query: async () => permission },
+      provider: { start: async () => {}, stop() { providerStops += 1; } },
+      initialGeometry: {},
+      onSample() {},
+      onCameraStatus: (state) => { latestCameraState = state; },
+    };
+    await controller.startCamera(input);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (mode === "interrupted") {
+      track.readyState = "ended";
+      trackEnded();
+      assert.equal(controller.snapshot().camera.status, "interrupted");
+    } else {
+      permission.state = "denied";
+      permissionChanged();
+      assert.equal(controller.snapshot().camera.status, "revoked");
+    }
+    assert.equal(providerStops, 1);
+    assert.equal(controller.snapshot().camera.modality, "non_gaze_only");
+    assert.equal(latestCameraState.status, mode === "interrupted" ? "interrupted" : "revoked");
+    assert.equal(controller.canCollectResearch, true);
+  }
 });
 
 test("a camera permission prompt resolving after withdrawal cannot restart capture", async () => {

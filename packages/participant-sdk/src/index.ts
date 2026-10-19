@@ -5,10 +5,19 @@ export interface CameraCapability { requested: boolean; permission: "not_request
 export function chooseModality(camera: CameraCapability): Modality { return camera.permission === "granted" ? "gaze_and_non_gaze" : "non_gaze_only"; }
 
 export { fetchParticipantConfiguration, fetchSessionBootstrap, parseSessionBootstrap, parseStudyConfig, parseSurveyPlan } from "./bootstrap.js";
+export { EventQueue } from "./event-queue.js";
 export type { StudyConfig } from "./bootstrap.js";
 export { mountParticipantEntry } from "./entry-widget.js";
 export type { ParticipantEntryOptions, ParticipantEntryWidget, ParticipantInvitation } from "./entry-widget.js";
 export { ConsentLifecycle } from "./consent-lifecycle.js";
-export type { CameraPermission, ConsentChoice, ConsentLifecycleOptions, ConsentPolicy, ConsentRecord, ConsentState } from "./consent-lifecycle.js";
+export type { CameraLifecycleStatus, CameraPermission, ConsentChoice, ConsentGatedCameraSource, ConsentGatedProviderAdapter, ConsentGatedProviderInput, ConsentLifecycleOptions, ConsentPolicy, ConsentRecord, ConsentState } from "./consent-lifecycle.js";
 export { mountConsentFlow } from "./consent-ui.js";
 export type { ConsentFlow, ConsentFlowLabels } from "./consent-ui.js";
+export { TrialLifecycle } from "./trial-lifecycle.js";
+export type { TrialEventContext, TrialExposureEvent, TrialLifecycleOptions, TrialSnapshot, TrialState, TrialTimingRules } from "./trial-lifecycle.js";
+export { parseQuestionConfig, createSurveyRuntime, mountSurvey } from "./survey.js";
+export type { QuestionAnswerType, QuestionConfig, QuestionDefinition, QuestionOption, QuestionResponse, SurveyRuntime, SurveySubmission } from "./survey.js";
+export { startInteractionCapture, isSensitiveTarget } from "./interactions.js";
+export type { InteractionCapture, InteractionCapturePolicy, InteractionEvent, InteractionEventType } from "./interactions.js";
+export { parseAoiConfig, resolveAoiIdForTarget, createGeometryTracker } from "./geometry.js";
+export type { AoiConfig, AoiDefinition, GeometryTracker, ParsedAoiConfig } from "./geometry.js";

@@ -1,0 +1,35 @@
+{
+  "demo_mode": true,
+  "schema_version": "1.0.0",
+  "event_ingestion_url": "http://localhost:8000/v1/events",
+  "session_bootstrap": {
+    "schema_version": "1.0.0",
+    "session_id": "demo-session-001",
+    "experience_id": "demo-experience",
+    "experience_config_version": "1.0.0",
+    "eligible_studies": [{ "study_id": "demo-study", "config_version": "1.0.0", "aoi_set_version": "1.0.0", "question_set_version": "1.0.0", "priority": 0 }],
+    "privacy_notice_version": "1.0.0",
+    "research_consent_version": "1.0.0",
+    "camera_capture_supported": true,
+    "issued_at": "2026-10-19T00:00:00Z",
+    "expires_at": "2099-10-19T00:00:00Z"
+  },
+  "study_config": {
+    "schema_version": "1.0.0", "study_id": "demo-study", "experience_id": "demo-experience", "config_version": "1.0.0", "status": "active",
+    "aoi_set_version": "1.0.0", "question_set_version": "1.0.0", "survey_policy": { "timing": "after_exposure", "consolidation": "deduplicate_by_question_id" }, "gaze_required": false
+  },
+  "survey_plan": { "schema_version": "1.0.0", "survey_plan_id": "demo-survey-plan", "session_id": "demo-session-001", "study_ids": ["demo-study"], "question_ids": ["demo-rating", "demo-choice"], "presentation": "end_of_session" },
+  "question_config": {
+    "schema_version": "1.0.0", "study_id": "demo-study", "question_set_version": "1.0.0",
+    "questions": [
+      { "question_id": "demo-rating", "prompt": "How clear was the information?", "answer_type": "scale", "required": true, "order": 0, "options": [{ "option_id": "1", "label": "Not clear" }, { "option_id": "2", "label": "Somewhat clear" }, { "option_id": "3", "label": "Very clear" }] },
+      { "question_id": "demo-choice", "prompt": "Which section did you notice first?", "answer_type": "single_choice", "required": false, "order": 1, "options": [{ "option_id": "overview", "label": "Overview" }, { "option_id": "details", "label": "Details" }] }
+    ]
+  },
+  "consent_policy": {
+    "research": { "version": "1.0.0", "text": "Taking part is voluntary. You can stop at any time. This local demo uses sample configuration and should not be used for real research." },
+    "camera": { "version": "1.0.0", "offered": true, "text": "Camera use is optional. If enabled, gaze data is handled by an injected P3 provider. You may continue without camera access." }
+  },
+  "trial_timing_rules": { "version": "demo-timing-1", "duration_ms": 15000, "pause_on_hidden": true, "allow_pause": true },
+  "aoi_config": { "schema_version": "1.0.0", "experience_id": "demo-experience", "study_id": "demo-study", "aoi_set_version": "1.0.0", "aois": [{ "aoi_id": "hero", "label": "Study content", "selector": "#study-content", "tracking_strategy": "css_selector", "priority": 0 }] }
+}

@@ -39,12 +39,80 @@ declining it still allows non-gaze participation under the current frozen
 policy.
 
 The host should call `startCamera` from a participant action after both
-consents. It requests video only, passes the stream and geometry through the
-P3 `ProviderAdapter` interface, and forwards ProviderSamples without
-normalization. `withdraw()` stops registered collectors, camera tracks and the
-provider before invoking only the separately injected
-`flushWithdrawalAudit()` capability. It never flushes ordinary research events.
-An approved, idempotent withdrawal endpoint and secure consent persistence
-service still need to be supplied by the control-plane integration; until then,
-the SDK reports an unconfigured audit sink and will not accept research
-consent without that sink.
+consents. It requests video only and retains the `MediaStream` inside the
+participant SDK. The provider gets session context, initial geometry, callbacks,
+and a revocable `camera_source` capability that exposes the active video track
+only while consent and capture remain active; the stream itself is never handed
+off. ProviderSamples pass through without normalization.
+
+Camera denial, missing APIs or devices, interruption, unplugging, permission
+revocation, and provider startup failure produce a reason-coded
+`non_gaze_only` state. The consent UI can display the status, offer retry where
+appropriate, or let the participant continue without gaze. The `onContinue`
+callback tells the host to launch the survey journey with the chosen modality
+and missingness reason. Research and survey participation remain available,
+and missing gaze is never filled with zero.
+
+The P3 adapter must implement the SDK's `ConsentGatedProviderAdapter` bridge
+shape to use `camera_source`; the older frozen `ProviderAdapterInput` contract
+accepts a raw `MediaStream` and is incompatible with this Stage 3 handoff. This
+SDK change does not alter shared contracts or P3-owned files. `withdraw()` stops
+registered collectors, camera tracks and the provider before invoking only the
+separately injected `flushWithdrawalAudit()` capability. It never flushes
+ordinary research events. An approved, idempotent withdrawal endpoint and
+secure consent persistence service still need to be supplied by the
+control-plane integration.
+
+## Trials, surveys, and interactions
+
+`TrialLifecycle` consumes a host-provided timing rules object with a version,
+optional `duration_ms`, `pause_on_hidden`, and optional `allow_pause`. It uses a
+monotonic clock for `elapsed_ms`, emits only the frozen trial exposure start
+and end EventEnvelopes with UTC timestamps, and makes terminal transitions
+idempotent. The frozen StudyConfig v1 does not yet define this trial timing
+object, so the host must supply the version-pinned rules.
+
+`parseQuestionConfig` follows the frozen QuestionConfig v1. Survey presentation
+order follows the ConsolidatedSurveyPlan; every response retains its Study and
+question-set version. Choice and scale answers must match configured option
+IDs. Because v1 has no numeric scale minimum/maximum fields, scale questions
+need versioned `options` for validation. `createSurveyRuntime` freezes the
+payload and IDs after the first valid submit so retries reuse the same
+idempotency key and response IDs. The host supplies the persistence callback;
+the API scaffold does not yet expose a survey response endpoint.
+
+`startInteractionCapture` accepts a versioned server-provided event allow-list and a
+consented lifecycle controller. It records only event type, coordinates,
+scroll position, visibility state, and configured AOI ID where available. It
+never reads form values, passwords, labels, page text, or route URLs. Route
+changes are reported explicitly with `recordNavigation()` and carry no path.
+
+## Dynamic AOI geometry
+
+`parseAoiConfig` validates versioned AOI selectors and identifiers.
+`createGeometryTracker` emits GeometrySnapshot v2 in viewport-relative CSS
+pixels (`*_px`), with the configured Study and AOI-set version. It tracks
+window and nested scroll, resize, visual viewport zoom, DOM mutations, and
+observed element resizes with debouncing. Hidden or missing elements are
+omitted; overlapping AOIs retain their configured priority for downstream
+resolution. One tracker is created per Study because GeometrySnapshot v2 is
+Study-scoped. Snapshot delivery is an injected P3 callback; the server scaffold
+does not yet expose a geometry ingestion endpoint.
+
+## Event buffering and demo
+
+`EventQueue` validates frozen EventEnvelope v1 records and bounds its in-memory
+buffer by both event count and serialized byte size. Enqueueing a duplicate ID
+with identical content is idempotent; reusing an ID with different content or
+exceeding either bound is an explicit error. Dispatch uses the same `event_id`
+in the `Idempotency-Key` header and removes an event only after a schema-valid
+accepted or duplicate receipt. Transient network errors, HTTP 408/425/429, and
+server errors retry with capped exponential backoff. Permanent rejection keeps
+the event queued and returns the error for the host to surface.
+
+The queue is in-memory, not persisted across reloads. `online` and `pagehide`
+trigger a flush, and hosts should call `close()` at session termination. On
+withdrawal, call `purge()` and detach lifecycle handlers; do not flush pending
+research events as part of the withdrawal audit. `apps/participant-demo/`
+shows the participant flow against a local, versioned sample fixture. Its
+consent records and survey responses are demo-only in-memory examples.

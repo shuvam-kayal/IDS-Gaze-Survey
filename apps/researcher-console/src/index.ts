@@ -1,4 +1,7 @@
-export interface Experience { id: string; name: string; origin: string; }
-export interface Study { id: string; experienceId: string; status: "draft" | "active" | "paused" | "closed"; questionSetVersion: string; aoiSetVersion: string; gazeRequired: false; }
-/** Camera denial never blocks participation in the current design. */
-export function canParticipateWithoutCamera(study: Study): boolean { return study.gazeRequired === false; }
+export { ResearcherApi } from "./features/experiences/api.js";
+export type { ExperienceRecord, ExperienceStatus, ResearcherRole, ResearcherSession } from "./features/experiences/api.js";
+export { mountExperienceRegistry } from "./features/experiences/screen.js";
+export { mountStudyAuthoring } from "./features/studies/screen.js";
+export { eligibleStudies, matchesEligibility, selectStudies } from "./features/studies/rules.js";
+export type { StudyConfig, EligibilityRule } from "./features/studies/rules.js";
+export type { StudyRecord, StudyInput } from "./features/experiences/api.js";

@@ -20,9 +20,12 @@ function decisionRecord(scope, decision, policyVersion, occurredAt) {
   return Object.freeze({ scope, decision, policy_version: policyVersion, occurred_at: occurredAt });
 }
 
-function permissionForError(error) {
-  if (error && ["NotAllowedError", "SecurityError"].includes(error.name)) return "denied";
-  return "unavailable";
+function cameraFailure(error) {
+  if (error?.name === "NotAllowedError" || error?.name === "SecurityError") return { permission: "denied", reason: "gaze.permission_denied" };
+  if (error?.name === "NotFoundError" || error?.name === "DevicesNotFoundError") return { permission: "unavailable", reason: "gaze.camera_unavailable", status: "unplugged" };
+  if (error?.name === "NotReadableError" || error?.name === "AbortError") return { permission: "interrupted", reason: "gaze.capture_interrupted", status: "interrupted" };
+  if (error?.name === "OverconstrainedError") return { permission: "unavailable", reason: "gaze.camera_unavailable" };
+  return { permission: "unavailable", reason: "gaze.camera_unavailable" };
 }
 
 /**
@@ -46,6 +49,7 @@ export class ConsentLifecycle {
     this.clock = clock;
     this.timers = timers;
     this.collectors = new Set();
+    this.cameraCleanups = new Set();
     this.stream = null;
     this.provider = null;
     this.captureActive = false;
@@ -62,6 +66,9 @@ export class ConsentLifecycle {
         policy_version: policy.camera.version,
         occurred_at: null,
         permission: "not_requested",
+        status: "not_requested",
+        modality: "non_gaze_only",
+        missingness: "gaze.not_collected_by_policy",
       },
       withdrawal: { withdrawn: false, occurred_at: null, audit_status: "not_sent" },
     };
@@ -168,6 +175,10 @@ export class ConsentLifecycle {
   stopCameraTracks() {
     const stream = this.stream;
     this.stream = null;
+    for (const cleanup of this.cameraCleanups) {
+      try { cleanup(); } catch { /* Continue camera shutdown. */ }
+    }
+    this.cameraCleanups.clear();
     if (!stream || typeof stream.getTracks !== "function") return;
     for (const track of stream.getTracks()) {
       try { track.stop(); } catch { /* Continue stopping the remaining tracks. */ }
@@ -182,7 +193,7 @@ export class ConsentLifecycle {
     try { return provider.stop(); } catch { return undefined; }
   }
 
-  async startCamera({ sessionId, mediaDevices = globalThis.navigator?.mediaDevices, provider, initialGeometry, onSample, onStatus = () => {} } = {}) {
+  async startCamera({ sessionId, mediaDevices = globalThis.navigator?.mediaDevices, permissions = globalThis.navigator?.permissions, provider, initialGeometry, onSample, onStatus = () => {}, onCameraStatus = () => {} } = {}) {
     if (!this.canCollectResearch) throw new Error("Research consent is required before camera capture");
     if (!this.policy.camera.offered || this.state.camera.decision !== "accepted") {
       throw new Error("Separate camera consent is required before camera capture");
@@ -192,17 +203,28 @@ export class ConsentLifecycle {
     }
     if (typeof onSample !== "function") throw new TypeError("onSample callback is required");
     if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
+      const supported = typeof globalThis.navigator !== "undefined" && "mediaDevices" in globalThis.navigator;
       this.state.camera.permission = "unavailable";
-      return { modality: "non_gaze_only", permission: "unavailable" };
+      this.state.camera.status = supported ? "unavailable" : "unsupported";
+      this.state.camera.missingness = "gaze.camera_unavailable";
+      onCameraStatus({ status: this.state.camera.status, modality: "non_gaze_only", reason: this.state.camera.missingness, recoverable: false });
+      return { modality: "non_gaze_only", permission: "unavailable", status: this.state.camera.status, reason: this.state.camera.missingness };
     }
     if (this.stream) throw new Error("Camera capture is already active");
 
     let stream;
+    this.state.camera.status = "requesting";
+    onCameraStatus({ status: "requesting", modality: "non_gaze_only", recoverable: false });
     try {
       stream = await mediaDevices.getUserMedia({ video: true, audio: false });
     } catch (error) {
-      this.state.camera.permission = permissionForError(error);
-      return { modality: "non_gaze_only", permission: this.state.camera.permission };
+      const failure = cameraFailure(error);
+      this.state.camera.permission = failure.permission;
+      this.state.camera.status = failure.status ?? failure.permission;
+      this.state.camera.modality = "non_gaze_only";
+      this.state.camera.missingness = failure.reason;
+      onCameraStatus({ status: this.state.camera.status, modality: "non_gaze_only", reason: failure.reason, recoverable: failure.permission === "denied" || failure.status === "interrupted" || failure.status === "unplugged" });
+      return { modality: "non_gaze_only", permission: failure.permission, status: this.state.camera.status, reason: failure.reason };
     }
 
     if (!this.canCollectResearch || this.withdrawn || this.state.camera.decision !== "accepted") {
@@ -212,42 +234,121 @@ export class ConsentLifecycle {
     this.stream = stream;
     this.provider = provider;
     this.state.camera.permission = "granted";
+    this.state.camera.status = "initializing";
+    this.state.camera.missingness = "gaze.no_samples";
     this.captureActive = true;
+    this.permissionStatus = null;
+    for (const track of stream.getTracks()) {
+      if (typeof track.addEventListener === "function") {
+        const ended = () => {
+          if (!this.withdrawn && this.captureActive) {
+            this.state.camera.permission = "interrupted";
+            this.state.camera.status = this.permissionStatus?.state === "denied" ? "revoked" : "interrupted";
+            this.state.camera.modality = "non_gaze_only";
+            this.state.camera.missingness = this.state.camera.status === "revoked" ? "gaze.permission_denied" : "gaze.capture_interrupted";
+            this.stopCameraTracks();
+            this.stopProvider();
+            onCameraStatus({ status: this.state.camera.status, modality: "non_gaze_only", reason: this.state.camera.missingness, recoverable: true });
+          }
+        };
+        track.addEventListener("ended", ended, { once: true });
+        this.cameraCleanups.add(() => track.removeEventListener?.("ended", ended));
+      }
+    }
+    const deviceChanged = () => {
+      if (stream.getTracks().some((track) => track.readyState === "ended") && !this.withdrawn && this.state.camera.status !== "revoked") {
+        this.state.camera.status = "unplugged";
+        this.state.camera.permission = "interrupted";
+        this.state.camera.modality = "non_gaze_only";
+        this.state.camera.missingness = "gaze.camera_unavailable";
+        this.stopCameraTracks();
+        this.stopProvider();
+        onCameraStatus({ status: "unplugged", modality: "non_gaze_only", reason: "gaze.camera_unavailable", recoverable: true });
+      }
+    };
+    mediaDevices.addEventListener?.("devicechange", deviceChanged);
+    if (mediaDevices.removeEventListener) this.cameraCleanups.add(() => mediaDevices.removeEventListener("devicechange", deviceChanged));
+    if (permissions?.query) {
+      Promise.resolve().then(() => permissions.query({ name: "camera" })).then((permissionStatus) => {
+        if (this.withdrawn || !this.captureActive) return;
+        this.permissionStatus = permissionStatus;
+        const permissionChanged = () => {
+          if (this.permissionStatus?.state === "denied" && this.captureActive && !this.withdrawn) {
+            this.state.camera.permission = "denied";
+            this.state.camera.status = "revoked";
+            this.state.camera.modality = "non_gaze_only";
+            this.state.camera.missingness = "gaze.permission_denied";
+            this.stopCameraTracks();
+            this.stopProvider();
+            onCameraStatus({ status: "revoked", modality: "non_gaze_only", reason: "gaze.permission_denied", recoverable: true });
+          }
+        };
+        this.permissionStatus.addEventListener?.("change", permissionChanged);
+        this.cameraCleanups.add(() => permissionStatus.removeEventListener?.("change", permissionChanged));
+        if (this.permissionStatus.state === "denied") permissionChanged();
+      }).catch(() => {});
+    }
+
+    // P1 retains the MediaStream. P3 receives a narrow, revocable camera
+    // capability and must acquire the live video track only while active.
+    const cameraSource = Object.freeze({
+      getVideoTrack: () => this.canCaptureCamera ? stream.getVideoTracks?.()[0] ?? null : null,
+      isActive: () => this.canCaptureCamera,
+    });
 
     try {
       await provider.start({
         session_id: sessionId,
-        camera_stream: stream,
+        camera_source: cameraSource,
         initial_geometry: initialGeometry,
         on_sample: (sample) => {
           if (this.canCaptureCamera) onSample(sample);
         },
-        on_status: (status, reason) => onStatus(status, reason),
+        on_status: (status, reason) => {
+          if (status === "ready") {
+            this.state.camera.status = "active";
+            this.state.camera.modality = "gaze_and_non_gaze";
+            this.state.camera.missingness = null;
+            onCameraStatus({ status: "active", modality: "gaze_and_non_gaze", recoverable: false });
+          } else if (status === "unavailable") {
+            this.state.camera.status = "provider_failed";
+            this.state.camera.modality = "non_gaze_only";
+            this.state.camera.missingness = "gaze.provider_failure";
+            this.stopCameraTracks();
+            this.stopProvider();
+            onCameraStatus({ status: "provider_failed", modality: "non_gaze_only", reason: reason || "gaze.provider_failure", recoverable: true });
+          } else if (status === "stopped" && this.captureActive) {
+            this.state.camera.status = "interrupted";
+            this.state.camera.modality = "non_gaze_only";
+            this.state.camera.missingness = "gaze.capture_interrupted";
+            this.stopCameraTracks();
+            this.stopProvider();
+            onCameraStatus({ status: "interrupted", modality: "non_gaze_only", reason: "gaze.capture_interrupted", recoverable: true });
+          }
+          onStatus(status, reason);
+        },
       });
       if (this.withdrawn || !this.canCollectResearch || !this.captureActive) {
         this.stopCameraTracks();
         this.stopProvider();
         throw new Error("Consent was withdrawn while camera capture started");
       }
-      for (const track of stream.getTracks()) {
-        if (typeof track.addEventListener === "function") {
-          const ended = () => {
-            if (!this.withdrawn && this.captureActive) {
-              this.state.camera.permission = "interrupted";
-              this.stopCameraTracks();
-              this.stopProvider();
-            }
-          };
-          track.addEventListener("ended", ended, { once: true });
-          this.collectors.add(() => track.removeEventListener?.("ended", ended));
-        }
+      if (this.state.camera.status === "initializing") {
+        this.state.camera.status = "active";
+        this.state.camera.modality = "gaze_and_non_gaze";
+        this.state.camera.missingness = null;
+        onCameraStatus({ status: "active", modality: "gaze_and_non_gaze", recoverable: false });
       }
-      return { modality: "gaze_and_non_gaze", permission: "granted" };
+      return { modality: this.state.camera.modality, permission: "granted", status: this.state.camera.status, reason: this.state.camera.missingness };
     } catch (error) {
       this.stopCameraTracks();
       this.stopProvider();
-      if (this.state.camera.permission === "granted") this.state.camera.permission = "unavailable";
-      throw error;
+      this.state.camera.permission = "unavailable";
+      this.state.camera.status = "provider_failed";
+      this.state.camera.modality = "non_gaze_only";
+      this.state.camera.missingness = "gaze.provider_failure";
+      onCameraStatus({ status: "provider_failed", modality: "non_gaze_only", reason: "gaze.provider_failure", recoverable: true });
+      return { modality: "non_gaze_only", permission: "unavailable", status: "provider_failed", reason: "gaze.provider_failure", error };
     }
   }
 

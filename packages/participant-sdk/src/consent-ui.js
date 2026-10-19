@@ -8,7 +8,7 @@ function textElement(doc, tag, text, attrs = {}) {
 }
 
 /** Render sequential research and camera consent choices from server policy text. */
-export function mountConsentFlow(root, { controller, policy, labels, document: doc = globalThis.document } = {}) {
+export function mountConsentFlow(root, { controller, policy, labels, cameraOptions, onContinue = () => {}, document: doc = globalThis.document } = {}) {
   if (!root || typeof root.replaceChildren !== "function") throw new TypeError("A consent-flow root element is required");
   if (!controller || typeof controller.recordResearchConsent !== "function" || typeof controller.recordCameraConsent !== "function" || typeof controller.withdraw !== "function") {
     throw new TypeError("A ConsentLifecycle controller is required");
@@ -19,7 +19,7 @@ export function mountConsentFlow(root, { controller, policy, labels, document: d
   if (!labels || !doc?.createElement) throw new TypeError("Consent labels and browser document are required");
 
   const flowId = `ids-consent-${++flowSequence}`;
-  const flow = { state: "research_consent", root, controller, policy, labels, document: doc };
+  const flow = { state: "research_consent", root, controller, policy, labels, document: doc, cameraOptions, onContinue };
   const status = textElement(doc, "p", "", { role: "status", "aria-live": "polite" });
 
   function render({ title, description, actions }) {
@@ -69,6 +69,79 @@ export function mountConsentFlow(root, { controller, policy, labels, document: d
     }
   }
 
+  function cameraMessage(result) {
+    const messages = {
+      denied: labels.cameraDenied,
+      unavailable: labels.cameraUnavailable,
+      unsupported: labels.cameraUnsupported,
+      interrupted: labels.cameraInterrupted,
+      unplugged: labels.cameraUnplugged,
+      revoked: labels.cameraRevoked,
+      provider_failed: labels.providerFailed,
+    };
+    return messages[result.status] || labels.cameraUnavailable;
+  }
+
+  function continueJourney(modality = "non_gaze_only", missingness = controller.snapshot().camera.missingness || "gaze.not_collected_by_policy") {
+    flow.state = "complete";
+    Promise.resolve(onContinue({ modality, missingness })).catch(() => {});
+    render({ title: labels.completeTitle, description: labels.completeWithoutCameraDescription, actions: [] });
+  }
+
+  function renderCameraReady() {
+    flow.state = "camera_ready";
+    render({
+      title: labels.completeTitle,
+      description: labels.cameraReadyToStart,
+      actions: [
+        button(labels.startCamera, async () => {
+          flow.state = "starting_camera";
+          status.textContent = labels.cameraStarting;
+          let result;
+          try {
+            result = await controller.startCamera({
+              ...cameraOptions,
+              onCameraStatus: (cameraState) => {
+                cameraOptions?.onCameraStatus?.(cameraState);
+                if (["denied", "unavailable", "unsupported", "interrupted", "unplugged", "revoked", "provider_failed"].includes(cameraState.status)) {
+                  flow.state = "camera_fallback";
+                  renderCameraFallback(cameraState);
+                }
+              },
+            });
+          } catch {
+            result = { status: "provider_failed", modality: "non_gaze_only", reason: "gaze.provider_failure", recoverable: true };
+          }
+          if (result.modality === "gaze_and_non_gaze") {
+            flow.state = "camera_active";
+            Promise.resolve(onContinue({ modality: "gaze_and_non_gaze", missingness: null })).catch(() => {});
+            render({ title: labels.completeTitle, description: labels.cameraActive, actions: [] });
+          } else {
+            flow.state = "camera_fallback";
+            renderCameraFallback(result);
+          }
+        }),
+        button(labels.continueWithoutGaze, async () => {
+          continueJourney();
+        }),
+      ],
+    });
+  }
+
+  function renderCameraFallback(result) {
+    flow.state = "camera_fallback";
+    render({
+      title: labels.completeTitle,
+      description: cameraMessage(result),
+      actions: [
+        ...(result.recoverable && cameraOptions ? [button(labels.retryCamera, () => renderCameraReady())] : []),
+        button(labels.continueWithoutGaze, async () => {
+          continueJourney("non_gaze_only", result.reason || controller.snapshot().camera.missingness || "gaze.camera_unavailable");
+        }),
+      ],
+    });
+  }
+
   function wasWithdrawn() {
     return controller.snapshot().withdrawal.withdrawn;
   }
@@ -87,8 +160,7 @@ export function mountConsentFlow(root, { controller, policy, labels, document: d
         flow.state = "camera_consent";
         renderCameraConsent();
       } else {
-        flow.state = "complete";
-        render({ title: labels.completeTitle, description: labels.completeWithoutCameraDescription, actions: [] });
+        continueJourney("non_gaze_only", "gaze.not_collected_by_policy");
       }
     } catch {
       if (wasWithdrawn()) {
@@ -107,12 +179,14 @@ export function mountConsentFlow(root, { controller, policy, labels, document: d
     status.textContent = labels.saving;
     try {
       await controller.recordCameraConsent(decision);
-      flow.state = "complete";
-      render({
-        title: labels.completeTitle,
-        description: decision === "accepted" ? labels.completeWithCameraDescription : labels.completeWithoutCameraDescription,
-        actions: [],
-      });
+      if (decision === "accepted" && cameraOptions) renderCameraReady();
+      else if (decision === "accepted") {
+        flow.state = "complete";
+        render({ title: labels.completeTitle, description: labels.completeWithCameraDescription, actions: [] });
+      }
+      else {
+        continueJourney("non_gaze_only", "gaze.not_collected_by_policy");
+      }
     } catch {
       if (wasWithdrawn()) {
         showWithdrawn(controller.snapshot().withdrawal.audit_status);
