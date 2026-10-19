@@ -1,7 +1,7 @@
 # M4 Browser-to-Result Transport Decision
 
-Status: selected design; implementation blocked at the authorization/runtime
-boundary
+Status: selected design; fail-closed route scaffolding implemented; production
+authorization/runtime binding remains pending
 
 This decision records the smallest compatible transport for connecting the P1
 participant runtime to the existing P3 gaze pipeline. It does not change the
@@ -50,7 +50,9 @@ submission can carry the complete study/trial/window context required by P3.
 It also permits bounded batches without introducing a WebSocket, queue,
 browser database or direct browser-to-database connection.
 
-This route is a design target, not an implemented API in the current slice.
+The additive route and versioned request/response contracts are now implemented
+with a fail-closed server-side context-provider boundary. The production
+context provider and participant runtime remain external work.
 
 ## Candidate request semantics
 
@@ -185,26 +187,26 @@ Rejected for security, authorization and ownership reasons.
 
 ## Current blocker
 
-The repository does not currently contain:
+The repository still does not contain:
 
 1. a P1 participant runtime that sends ProviderSamples to the API;
 2. server-side session authorization or a consent/withdrawal state store;
-3. an approved versioned gaze-ingestion request schema and route;
-4. an API-to-P3 handler that can bind browser input to authorized study/trial
-   and geometry context.
+3. a production API authorization/context provider;
+4. a P1 participant runtime that invokes the new route.
 
 The browser must not be permitted to self-assert consent or eligibility as a
-substitute for those controls. Therefore no public route is implemented in
-this change. Implementing one before the API/integrator and P1 lifecycle
-bridge exists would create an unsafe, knowingly incomplete transport.
+substitute for those controls. The implemented route returns
+`gaze_context_unavailable` until the server-owned provider is configured; its
+test-only injection is not production authorization.
 
 ## Smallest follow-up implementation slice
 
 After the blocker is resolved, implement one authorized bounded observation
 submission and test it against PostgreSQL:
 
-1. approve and add the additive request/response contract;
-2. add the API route with a real server-side authorization/context provider;
+1. replace the test-only context provider boundary with a real server-side
+   authorization/context provider;
+2. bind the P1 participant runtime to the additive route;
 3. call the existing P3 normalization, association persistence and FeatureRecord
    pipeline;
 4. test exact retries, conflicts, wrong context, withdrawal, camera denial,

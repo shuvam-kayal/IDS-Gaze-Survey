@@ -98,6 +98,7 @@ class AuthorizedGazeResult:
     feature_record: dict[str, Any]
     gaze_records: list[dict[str, Any]]
     association: dict[str, Any] | None
+    duplicate: bool
 
 
 def process_authorized_gaze(
@@ -121,7 +122,12 @@ def process_authorized_gaze(
         raise TypeError("provider_samples must be an array")
     if not isinstance(repository, TelemetryRepository) and not all(
         hasattr(repository, method)
-        for method in ("persist_gaze_association", "persist_feature_record")
+        for method in (
+            "persist_gaze_association",
+            "persist_feature_record",
+            "gaze_association_exists",
+            "feature_record_exists",
+        )
     ):
         raise TypeError("repository must provide P3 persistence methods")
     if not context.gaze_available and provider_samples:
@@ -174,7 +180,16 @@ def process_authorized_gaze(
         survey_completion_ratio=context.survey_completion_ratio,
     )
 
+    association_exists = (
+        association is not None
+        and repository.gaze_association_exists(
+            association["association_id"], association["session_id"]
+        )
+    )
+    feature_exists = repository.feature_record_exists(feature_record["feature_record_id"])
+    duplicate = bool(feature_exists and (association is None or association_exists))
+
     if association is not None:
         repository.persist_gaze_association(association)
     repository.persist_feature_record(feature_record)
-    return AuthorizedGazeResult(feature_record, normalized, association)
+    return AuthorizedGazeResult(feature_record, normalized, association, duplicate)

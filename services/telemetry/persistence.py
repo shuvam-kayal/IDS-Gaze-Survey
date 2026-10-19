@@ -491,6 +491,16 @@ class TelemetryRepository:
             )
         return record
 
+    def gaze_association_exists(self, association_id: str, session_id: str) -> bool:
+        with self.sessions() as db:
+            return db.get(
+                GazeObservationAssociationRow, (association_id, session_id)
+            ) is not None
+
+    def feature_record_exists(self, feature_record_id: str) -> bool:
+        with self.sessions() as db:
+            return db.get(FeatureRecordRow, feature_record_id) is not None
+
     def list_feature_records(self, session_id: str, *, study_id: str | None = None) -> list[dict[str, Any]]:
         with self.sessions() as db:
             statement = select(FeatureRecordRow).where(FeatureRecordRow.session_id == session_id)

@@ -20,6 +20,8 @@ EXAMPLES = {
     "trial-exposure-start.v1.schema.json": "trial-exposure-start.json",
     "trial-exposure-end.v1.schema.json": "trial-exposure-end.json",
     "gaze-observation-association.v1.schema.json": "gaze-observation-association.json",
+    "gaze-observation-ingestion.v1.schema.json": "gaze-observation-ingestion.json",
+    "gaze-observation-ingestion-response.v1.schema.json": "gaze-observation-ingestion-response.json",
     "survey-plan.v1.schema.json": "survey-plan.json",
 }
 

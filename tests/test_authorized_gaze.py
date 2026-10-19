@@ -1,13 +1,17 @@
 import json
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 
 from services.feature_engine.authorized_gaze import (
     AuthorizedGazeContext,
     process_authorized_gaze,
 )
 from services.gaze_engine.context import TrialObservationContext
+from services.telemetry.persistence import TelemetryRepository
 
 SESSION = "session-authorized-1"
 STUDY = "study-authorized-1"
@@ -33,13 +37,13 @@ def sample(sample_id: str, offset_ms: int, *, x: float = 25) -> dict:
     }
 
 
-def context(**changes) -> AuthorizedGazeContext:
+def context(*, session_id: str = SESSION, **changes) -> AuthorizedGazeContext:
     observation = TrialObservationContext(
-        SESSION, STUDY, TRIAL, AOI_VERSION, START, END
+        session_id, STUDY, TRIAL, AOI_VERSION, START, END
     )
     values = {
         "experience_id": "experience-authorized-1",
-        "session_id": SESSION,
+        "session_id": session_id,
         "study_id": STUDY,
         "trial_id": TRIAL,
         "aoi_set_version": AOI_VERSION,
@@ -48,7 +52,7 @@ def context(**changes) -> AuthorizedGazeContext:
             {
                 "schema_version": "2.0.0",
                 "snapshot_id": "geometry-authorized-1",
-                "session_id": SESSION,
+                "session_id": session_id,
                 "study_id": STUDY,
                 "captured_at": "2026-01-01T09:59:00Z",
                 "aoi_set_version": AOI_VERSION,
@@ -72,7 +76,7 @@ def context(**changes) -> AuthorizedGazeContext:
             "event_id": "start-authorized-1",
             "experience_id": "experience-authorized-1",
             "study_ids": [STUDY],
-            "session_id": SESSION,
+            "session_id": session_id,
             "event_type": "trial.exposure_started",
             "occurred_at": START,
             "payload": {"trial_id": TRIAL},
@@ -82,7 +86,7 @@ def context(**changes) -> AuthorizedGazeContext:
             "event_id": "start-authorized-1",
             "experience_id": "experience-authorized-1",
             "study_ids": [STUDY],
-            "session_id": SESSION,
+            "session_id": session_id,
             "event_type": "trial.exposure_started",
             "occurred_at": START,
             "payload": {"trial_id": TRIAL},
@@ -119,6 +123,30 @@ class FakeRepository:
         self.features[key] = encoded
         return record
 
+    def gaze_association_exists(self, association_id, session_id):
+        return (association_id, session_id) in self.associations
+
+    def feature_record_exists(self, feature_record_id):
+        return feature_record_id in self.features
+
+
+@pytest.fixture(scope="module")
+def postgres_repository():
+    database_url = os.environ.get(
+        "TEST_DATABASE_URL",
+        os.environ.get(
+            "DATABASE_URL",
+            "postgresql+psycopg://attention:attention@localhost:5432/attention?connect_timeout=5",
+        ),
+    )
+    engine = create_engine(database_url, pool_pre_ping=True)
+    try:
+        with engine.connect() as connection:
+            connection.exec_driver_sql("SELECT 1")
+    except OperationalError as exc:
+        pytest.skip(f"PostgreSQL test database unavailable: {exc}")
+    return TelemetryRepository(engine)
+
 
 def test_valid_authorized_context_reaches_existing_pipeline_and_persistence():
     repository = FakeRepository()
@@ -132,6 +160,7 @@ def test_valid_authorized_context_reaches_existing_pipeline_and_persistence():
     assert len(result.gaze_records) == 3
     assert len(repository.associations) == 1
     assert len(repository.features) == 1
+    assert result.duplicate is False
 
 
 def test_context_identity_must_match_observation_context():
@@ -164,6 +193,7 @@ def test_exact_retry_is_deterministic_and_idempotent():
     assert first.gaze_records == second.gaze_records
     assert len(repository.associations) == 1
     assert len(repository.features) == 1
+    assert second.duplicate is True
 
 
 def test_unavailable_gaze_preserves_non_gaze_feature_record_without_association():
@@ -185,3 +215,38 @@ def test_feature_write_failure_does_not_claim_success():
         process_authorized_gaze([sample("sample-0", 0)], context=context(), repository=repository)
     assert repository.associations
     assert not repository.features
+
+
+def test_retry_reconciles_association_when_feature_write_failed():
+    repository = FakeRepository(fail_features=True)
+    samples = [sample("sample-0", 0), sample("sample-1", 100), sample("sample-2", 200)]
+    with pytest.raises(RuntimeError, match="feature persistence failed"):
+        process_authorized_gaze(samples, context=context(), repository=repository)
+
+    repository.fail_features = False
+    recovered = process_authorized_gaze(samples, context=context(), repository=repository)
+    retried = process_authorized_gaze(samples, context=context(), repository=repository)
+
+    assert recovered.duplicate is False
+    assert retried.duplicate is True
+    assert len(repository.associations) == 1
+    assert len(repository.features) == 1
+
+
+def test_postgres_handler_persists_and_retries_with_real_repository(postgres_repository):
+    session_id = "session-authorized-postgres-" + datetime.now(UTC).strftime("%Y%m%d%H%M%S%f")
+    samples = [sample("sample-0", 0), sample("sample-1", 100), sample("sample-2", 200)]
+    first = process_authorized_gaze(
+        samples, context=context(session_id=session_id), repository=postgres_repository
+    )
+    retry = process_authorized_gaze(
+        list(reversed(samples)), context=context(session_id=session_id), repository=postgres_repository
+    )
+
+    assert first.duplicate is False
+    assert retry.duplicate is True
+    assert [row["sample_id"] for row in postgres_repository.list_gaze_records(session_id)] == [
+        "sample-0", "sample-1", "sample-2"
+    ]
+    assert len(postgres_repository.list_feature_records(session_id)) == 1
+    assert postgres_repository.delete_session(session_id) is True
