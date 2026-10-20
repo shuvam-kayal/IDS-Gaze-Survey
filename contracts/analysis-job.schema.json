@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/analysis-job.schema.json",
+  "title": "Person 4 local AnalysisJob adapter",
+  "type": "object",
+  "required": ["job_id", "request_id", "study_id", "status", "created_at"],
+  "properties": {
+    "job_id": {"type": "string", "format": "uuid"},
+    "request_id": {"type": "string"},
+    "request_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "study_id": {"type": "string"},
+    "status": {"enum": ["queued", "running", "succeeded", "failed"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "result_id": {"type": "string", "format": "uuid"},
+    "error": {"type": "object", "required": ["code", "message"]}
+  },
+  "additionalProperties": false
+}

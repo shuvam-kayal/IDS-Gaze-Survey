@@ -1,0 +1,26 @@
+{
+  "description": "Synthetic only: 20 independent participant groups for grouped holdout evaluation. No participant data.",
+  "analysis": {"target": "outcome", "features": ["interaction_score"], "task": "classification", "models": ["logistic"], "seed": 17},
+  "records": [
+    {"participant_id":"s01","features":{"interaction_score":0.1,"outcome":"low"}},
+    {"participant_id":"s02","features":{"interaction_score":0.2,"outcome":"low"}},
+    {"participant_id":"s03","features":{"interaction_score":0.3,"outcome":"low"}},
+    {"participant_id":"s04","features":{"interaction_score":0.4,"outcome":"low"}},
+    {"participant_id":"s05","features":{"interaction_score":0.5,"outcome":"low"}},
+    {"participant_id":"s06","features":{"interaction_score":0.6,"outcome":"low"}},
+    {"participant_id":"s07","features":{"interaction_score":0.7,"outcome":"low"}},
+    {"participant_id":"s08","features":{"interaction_score":0.8,"outcome":"low"}},
+    {"participant_id":"s09","features":{"interaction_score":0.9,"outcome":"low"}},
+    {"participant_id":"s10","features":{"interaction_score":1.0,"outcome":"low"}},
+    {"participant_id":"s11","features":{"interaction_score":1.1,"outcome":"high"}},
+    {"participant_id":"s12","features":{"interaction_score":1.2,"outcome":"high"}},
+    {"participant_id":"s13","features":{"interaction_score":1.3,"outcome":"high"}},
+    {"participant_id":"s14","features":{"interaction_score":1.4,"outcome":"high"}},
+    {"participant_id":"s15","features":{"interaction_score":1.5,"outcome":"high"}},
+    {"participant_id":"s16","features":{"interaction_score":1.6,"outcome":"high"}},
+    {"participant_id":"s17","features":{"interaction_score":1.7,"outcome":"high"}},
+    {"participant_id":"s18","features":{"interaction_score":1.8,"outcome":"high"}},
+    {"participant_id":"s19","features":{"interaction_score":1.9,"outcome":"high"}},
+    {"participant_id":"s20","features":{"interaction_score":2.0,"outcome":"high"}}
+  ]
+}

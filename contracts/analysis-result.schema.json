@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/analysis-result.schema.json",
+  "title": "Person 4 AnalysisResult adapter",
+  "type": "object",
+  "required": ["schema_version", "result_id", "request_id", "request_fingerprint", "study_id", "status", "analysis_version", "generated_at", "data_scope", "metadata", "results", "warnings", "limitations"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"}, "result_id": {"type": "string", "format": "uuid"}, "request_id": {"type": "string"}, "request_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "study_id": {"type": "string"},
+    "status": {"enum": ["succeeded", "no_data", "insufficient_data"]}, "analysis_version": {"type": "string"}, "generated_at": {"type": "string", "format": "date-time"},
+    "data_scope": {"type": "object", "required": ["study_id", "feature_set_version", "record_n", "record_fingerprint", "feature_versions"]},
+    "metadata": {"type": "object", "required": ["modality", "modality_policy", "sample_size", "analysis_unit", "unique_unit_n", "feature_names", "gaze_values_excluded"]},
+    "results": {"type": "object"}, "warnings": {"type": "array", "items": {"type": "string"}}, "limitations": {"type": "array", "items": {"type": "string"}}, "report": {"type": "object"}
+  }
+}
