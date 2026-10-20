@@ -16,7 +16,13 @@ const contentTypes = {
 export function createSmokeServer() {
   return createServer(async (request, response) => {
     const requested = request.url === "/" ? "index.html" : request.url.slice(1);
-    const relative = requested === "app.js" ? "dist/app.js" : requested;
+    const relative = requested === "app.js"
+      ? "dist/app.js"
+      : requested === "p3-demo.js"
+        ? "dist/p3-demo.js"
+        : requested === "participant-webgazer.js"
+          ? "dist/participant-webgazer.js"
+        : requested;
     const file = normalize(join(root, relative));
     if (!file.startsWith(normalize(root))) {
       response.writeHead(400).end("Bad request");

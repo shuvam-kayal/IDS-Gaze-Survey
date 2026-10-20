@@ -8,6 +8,7 @@
     "test": "node --test test/webgazer-adapter.test.js test/smoke-assets.test.js test/calibration.test.js test/smoke-layout.test.js",
     "build:smoke": "node smoke-test/copy-mediapipe-assets.mjs && esbuild src/browser-smoke-entry.js --bundle --format=esm --platform=browser --outfile=smoke-test/dist/app.js",
     "build:p3-demo": "node smoke-test/copy-mediapipe-assets.mjs && esbuild src/p3-demo-entry.js --bundle --format=esm --platform=browser --outfile=smoke-test/dist/p3-demo.js",
+    "build:participant-demo": "node smoke-test/copy-mediapipe-assets.mjs && esbuild src/participant-demo-entry.js --bundle --format=iife --platform=browser --outfile=smoke-test/dist/participant-webgazer.js",
     "serve:smoke": "node smoke-test/server.mjs"
   },
   "dependencies": {

@@ -136,21 +136,21 @@ export function createGeometryTracker({ aoiConfig, context, controller, onSnapsh
     return JSON.stringify(geometry);
   }
 
-  function collect() {
+  function collect(force = false) {
     if (stopped) return lastSnapshot;
     refreshObservedElements();
     const next = buildSnapshot();
-    if (!lastSnapshot || geometryKey(lastSnapshot) !== geometryKey(next)) {
+    if (force || !lastSnapshot || geometryKey(lastSnapshot) !== geometryKey(next)) {
       lastSnapshot = next;
       onSnapshot(next);
     }
     return lastSnapshot;
   }
 
-  function flush() {
+  function flush({ force = false } = {}) {
     if (timerId !== null) timers.clearTimeout(timerId);
     timerId = null;
-    return collect();
+    return collect(force);
   }
 
   function schedule() {

@@ -35,7 +35,10 @@ export interface StudyInput {
 
 export class ResearcherApi {
   private csrfToken: string | null = null;
-  constructor(private readonly baseUrl = "http://localhost:8000", private readonly fetchImpl: typeof fetch = fetch) {}
+  constructor(
+    private readonly baseUrl = "http://localhost:8000",
+    private readonly fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis),
+  ) {}
 
   private async request<T>(path: string, init: RequestInit = {}, csrf = false): Promise<T> {
     const headers = new Headers(init.headers);

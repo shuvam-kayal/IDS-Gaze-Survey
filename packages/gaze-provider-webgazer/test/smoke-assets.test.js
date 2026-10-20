@@ -25,3 +25,17 @@ test("local smoke server serves every pinned FaceMesh runtime asset", async () =
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("local smoke server serves the built P3 demo entry", async () => {
+  const server = createSmokeServer();
+  await new Promise((resolve) => server.listen(0, "localhost", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  try {
+    const response = await fetch(`http://localhost:${port}/p3-demo.js`);
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /createWebGazerAdapter|webgazer/);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});

@@ -212,8 +212,22 @@ def resolve_authorized_trial_lifecycle(
     if not hasattr(event_repository, "list_events"):
         raise TypeError("event_repository must provide list_events")
     events = event_repository.list_events(session_id, study_id=study_id)
-    starts = [event for event in events if event.get("event_type") == START_EVENT_TYPE]
-    ends = [event for event in events if event.get("event_type") == END_EVENT_TYPE]
+    # The repository query is session/study scoped, but a session may contain
+    # more than one trial. Select the requested trial before lifecycle
+    # validation; otherwise a legitimate earlier trial is reported as a
+    # mismatched event instead of being isolated from this observation window.
+    def belongs_to_requested_trial(event: dict[str, Any]) -> bool:
+        payload = event.get("payload") if isinstance(event, dict) else None
+        return isinstance(payload, dict) and payload.get("trial_id") == trial_id
+
+    starts = [
+        event for event in events
+        if event.get("event_type") == START_EVENT_TYPE and belongs_to_requested_trial(event)
+    ]
+    ends = [
+        event for event in events
+        if event.get("event_type") == END_EVENT_TYPE and belongs_to_requested_trial(event)
+    ]
     return resolve_trial_lifecycle(
         starts,
         ends,

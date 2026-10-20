@@ -7,13 +7,16 @@
   <title>Participant study demo</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./style.css">
+  <!-- Built locally with npm run build:participant-demo; this exposes only the
+       approved P3 ProviderAdapter boundary and never stores video. -->
+  <script src="./provider-loader.js"></script>
   <script type="module" src="./main.js"></script>
 </head>
 <body>
   <header class="site-header"><a href="#main" class="brand">Northstar Research</a><span>Participant demo</span></header>
   <main id="main">
     <section class="intro"><p class="eyebrow">A sample product experience</p><h1>Explore a calmer way to plan your day</h1><p>This page demonstrates the participant journey: invitation, consent, optional camera access, a short trial, and a survey.</p></section>
-    <section class="card content" id="study-content" aria-labelledby="content-title"><p class="eyebrow">Study content</p><h2 id="content-title">Make space for focused work</h2><p>Choose a small number of priorities, take short breaks, and review what helped you stay focused.</p><div class="content-grid"><article><h3>Start with one priority</h3><p>A clear next step can make a busy day feel more manageable.</p></article><article><h3>Take a short pause</h3><p>A few minutes away from a task can help you return with fresh attention.</p></article></div></section>
+    <section class="card content" id="study-content" aria-labelledby="content-title"><p class="eyebrow">Study content</p><h2 id="content-title">Make space for focused work</h2><p>Choose a small number of priorities, take short breaks, and review what helped you stay focused.</p><div class="content-grid"><article data-aoi="product-card"><h3>Start with one priority</h3><p>A clear next step can make a busy day feel more manageable.</p></article><article><h3>Take a short pause</h3><p>A few minutes away from a task can help you return with fresh attention.</p></article></div></section>
     <section class="card" id="journey" aria-live="polite"><h2>Your study invitation</h2><p>Choose whether you want to hear more about this optional research demo.</p><div id="entry"></div></section>
     <section class="card hidden" id="experience"><div id="consent"></div><div id="trial"></div><div id="survey"></div></section>
     <section class="card" aria-labelledby="status-title"><h2 id="status-title">Connection status</h2><p id="queue-status" role="status">Events are kept in a bounded local queue until the API is available.</p></section>

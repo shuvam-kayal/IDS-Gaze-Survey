@@ -24,6 +24,7 @@ export function parseSurveyPlan(value: unknown, options?: { bootstrap?: SessionB
 export function fetchSessionBootstrap(options: {
   endpoint: string;
   experienceId: string;
+  cameraCaptureSupported?: boolean;
   fetchImpl?: typeof fetch;
   now?: number;
 }): Promise<SessionBootstrapPayload>;

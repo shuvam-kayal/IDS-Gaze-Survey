@@ -472,7 +472,12 @@ class ControlPlaneRepository:
                     raise ValueError("research participation consent is required before camera consent")
             existing = db.get(ParticipantConsentRecord, (session_id, scope))
             if existing is not None:
-                if (existing.decision, existing.policy_version, existing.occurred_at) != (decision, policy_version, occurred_at):
+                # Consent is durable state, not an append-only event keyed by
+                # the browser's observation timestamp. A refreshed participant
+                # page may replay the same decision with a new timestamp. Keep
+                # the original occurrence time and make that retry idempotent;
+                # changing the decision or policy remains a conflict.
+                if (existing.decision, existing.policy_version) != (decision, policy_version):
                     raise ValueError("participant consent decision conflict")
                 return {"session_id": existing.session_id, "scope": existing.scope,
                         "decision": existing.decision, "policy_version": existing.policy_version,

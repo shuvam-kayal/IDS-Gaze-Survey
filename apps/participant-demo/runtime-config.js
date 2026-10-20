@@ -39,7 +39,7 @@ function consentPolicy(bootstrap) {
 }
 
 /** Load the actual P2 participant resources; no fixture fallback is attempted. */
-export async function loadLiveConfig({ apiBaseUrl, experienceId, fetchImpl = globalThis.fetch, now = Date.now() } = {}) {
+export async function loadLiveConfig({ apiBaseUrl, experienceId, fetchImpl = globalThis.fetch?.bind(globalThis), now = Date.now() } = {}) {
   if (!nonEmpty(apiBaseUrl) || !nonEmpty(experienceId)) {
     throw new TypeError("Live mode requires an API base URL and experience_id");
   }
@@ -47,6 +47,7 @@ export async function loadLiveConfig({ apiBaseUrl, experienceId, fetchImpl = glo
   const configuration = await fetchParticipantConfiguration({
     bootstrapUrl: joinUrl(base, "/v1/sessions/bootstrap"),
     experienceId,
+    cameraCaptureSupported: Boolean(globalThis.navigator?.mediaDevices?.getUserMedia),
     studyConfigUrl: (studyId, version, sessionId) => joinUrl(base, `/v1/sessions/${encodeURIComponent(sessionId)}/studies/${encodeURIComponent(studyId)}/study-config?config_version=${encodeURIComponent(version)}`),
     questionConfigUrl: (studyId, version, sessionId) => joinUrl(base, `/v1/sessions/${encodeURIComponent(sessionId)}/studies/${encodeURIComponent(studyId)}/question-config?config_version=${encodeURIComponent(version)}`),
     surveyPlanUrl: (sessionId) => joinUrl(base, `/v1/sessions/${encodeURIComponent(sessionId)}/survey-plan`),
@@ -64,10 +65,12 @@ export async function loadLiveConfig({ apiBaseUrl, experienceId, fetchImpl = glo
   const index = configuration.bootstrap.eligible_studies.findIndex((item) => item.study_id === study.study_id);
   return {
     mode: "live",
+    api_base_url: base,
     event_ingestion_url: joinUrl(base, "/v1/events"),
     session_bootstrap: configuration.bootstrap,
     study_config: configuration.studyConfigs[index],
     question_config: configuration.questionConfigs[index],
+    question_configs: configuration.questionConfigs,
     survey_plan: configuration.surveyPlan,
     survey_plan_details: configuration.surveyPlanDetails,
     trial_timing_rules: timingRulesFor(configuration.surveyPlanDetails, study.study_id),

@@ -227,6 +227,26 @@ def test_authorized_lifecycle_uses_verified_assignment_and_persisted_events():
     assert context == _context()
 
 
+def test_authorized_lifecycle_isolates_requested_trial_from_other_trials_in_session():
+    repository = _EventRepository([
+        _event(START_EVENT_TYPE, "start-old", "2026-01-01T09:00:00Z", "trial-old"),
+        _event(END_EVENT_TYPE, "end-old", "2026-01-01T09:00:10Z", "trial-old"),
+        _event(START_EVENT_TYPE, "start-current", "2026-01-01T10:00:00Z", "trial-a"),
+        _event(END_EVENT_TYPE, "end-current", "2026-01-01T10:00:10Z", "trial-a"),
+    ])
+    context, reason = resolve_authorized_trial_lifecycle(
+        repository,
+        participant_session=_verified_session(),
+        study_assignment=_assignment(),
+        study_id="study-a",
+        trial_id="trial-a",
+        aoi_set_version="aoi-a",
+        now=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+    )
+    assert reason is None
+    assert context == _context()
+
+
 def test_authorized_lifecycle_rejects_untrusted_or_ambiguous_scope():
     repository = _EventRepository([
         _event(START_EVENT_TYPE, "start-1", "2026-01-01T10:00:00Z"),

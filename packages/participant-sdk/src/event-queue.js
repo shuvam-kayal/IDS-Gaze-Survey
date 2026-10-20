@@ -21,7 +21,7 @@ function validateReceipt(receipt, event) {
 
 /** Bounded in-memory queue. Enqueue never silently drops an event; a full queue rejects the new event. */
 export class EventQueue {
-  constructor({ endpoint, fetchImpl = globalThis.fetch, maxQueueSize = 1000, maxQueueBytes = 5 * 1024 * 1024, baseDelayMs = 250, maxDelayMs = 8000, maxRetriesPerFlush = 3, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+  constructor({ endpoint, fetchImpl = globalThis.fetch?.bind(globalThis), maxQueueSize = 1000, maxQueueBytes = 5 * 1024 * 1024, baseDelayMs = 250, maxDelayMs = 8000, maxRetriesPerFlush = 3, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
     if (!nonEmpty(endpoint) || typeof fetchImpl !== "function") throw new TypeError("endpoint and fetchImpl are required");
     if (!Number.isInteger(maxQueueSize) || maxQueueSize < 1 || !Number.isInteger(maxQueueBytes) || maxQueueBytes < 1 || !Number.isInteger(maxRetriesPerFlush) || maxRetriesPerFlush < 0 || !Number.isFinite(baseDelayMs) || baseDelayMs < 0 || !Number.isFinite(maxDelayMs) || maxDelayMs < baseDelayMs) throw new TypeError("Invalid queue bounds or retry policy");
     this.endpoint = endpoint; this.fetchImpl = fetchImpl; this.maxQueueSize = maxQueueSize; this.maxQueueBytes = maxQueueBytes;

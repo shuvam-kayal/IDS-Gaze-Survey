@@ -71,7 +71,7 @@ test("requests bootstrap without accepting or sending a browser origin value", a
     },
   });
   assert.equal(result.session_id, bootstrap.session_id);
-  assert.deepEqual(JSON.parse(request.body), { experience_id: bootstrap.experience_id });
+  assert.deepEqual(JSON.parse(request.body), { experience_id: bootstrap.experience_id, camera_capture_supported: false });
   assert.equal(request.credentials, "include");
   assert.equal(Object.keys(request.headers).some((key) => key.toLowerCase() === "origin"), false);
 });

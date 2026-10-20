@@ -181,7 +181,7 @@ export async function withdrawParticipantSession({ endpoint, sessionId, occurred
  * Never pass an Origin value: browsers set that protected header themselves.
  * The caller should invoke this only after the participant accepts the study.
  */
-export async function fetchSessionBootstrap({ endpoint, experienceId, fetchImpl = globalThis.fetch, now = Date.now() }) {
+export async function fetchSessionBootstrap({ endpoint, experienceId, cameraCaptureSupported = false, fetchImpl = globalThis.fetch?.bind(globalThis), now = Date.now() }) {
   if (!nonEmptyString(endpoint) || !nonEmptyString(experienceId)) throw new TypeError("endpoint and experienceId are required");
   if (typeof fetchImpl !== "function") throw new TypeError("fetch is unavailable");
   const response = await fetchImpl(endpoint, {
@@ -189,7 +189,7 @@ export async function fetchSessionBootstrap({ endpoint, experienceId, fetchImpl 
     mode: "cors",
     credentials: "include",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ experience_id: experienceId }),
+    body: JSON.stringify({ experience_id: experienceId, camera_capture_supported: cameraCaptureSupported === true }),
   });
   if (!response.ok) {
     if (response.status === 403) throw new Error("This website is not authorized for the configured Experience");
@@ -202,14 +202,14 @@ export async function fetchSessionBootstrap({ endpoint, experienceId, fetchImpl 
 
 /** Load pinned study configs and the separate consolidated survey plan. */
 export async function fetchParticipantConfiguration({
-  bootstrapUrl, experienceId, studyConfigUrl, questionConfigUrl, surveyPlanUrl, surveyPlanDetailsUrl,
-  fetchImpl = globalThis.fetch, now = Date.now(),
+  bootstrapUrl, experienceId, cameraCaptureSupported = false, studyConfigUrl, questionConfigUrl, surveyPlanUrl, surveyPlanDetailsUrl,
+  fetchImpl = globalThis.fetch?.bind(globalThis), now = Date.now(),
 }) {
   if (typeof studyConfigUrl !== "function" || typeof questionConfigUrl !== "function" ||
       typeof surveyPlanUrl !== "function" || typeof surveyPlanDetailsUrl !== "function") {
     throw new TypeError("study, question, survey plan, and survey plan details URL resolvers are required");
   }
-  const bootstrap = await fetchSessionBootstrap({ endpoint: bootstrapUrl, experienceId, fetchImpl, now });
+  const bootstrap = await fetchSessionBootstrap({ endpoint: bootstrapUrl, experienceId, cameraCaptureSupported, fetchImpl, now });
   const studyConfigs = await Promise.all(bootstrap.eligible_studies.map(async (study) => {
     const config = await getJson(fetchImpl, studyConfigUrl(study.study_id, study.config_version, bootstrap.session_id));
     return parseStudyConfig(config, { bootstrap, study });

@@ -6,6 +6,14 @@ This dependency-free browser demo connects the participant SDK invitation, separ
 
 From this directory, run `python3 server.py` (or `npm run dev` if npm is available), then open `http://localhost:5173/?experience_id=<published-experience-id>`. The default is live P2 mode: after the participant accepts the invitation, the demo POSTs to `/v1/sessions/bootstrap`, then fetches the server-pinned StudyConfig, AOIConfig, QuestionConfig, SurveyPlan and SurveyPlan details. Start the repository API with `docker compose up --build` in the repository root. The browser sends interaction events to the existing `http://localhost:8000/v1/events` route; it does not send gaze samples in this slice.
 
+To include the real local WebGazer provider in the participant page, build it before starting the page:
+
+```powershell
+npm run build:participant-demo --prefix .\packages\gaze-provider-webgazer
+```
+
+Without that build, the participant page deliberately remains usable in non-gaze mode. With it, the page loads the pinned WebGazer adapter after explicit camera consent; it still requires trusted server-side geometry and lifecycle state before gaze results can be accepted.
+
 For an explicitly offline fixture-only run, use `http://localhost:5173/?mode=offline`. Offline mode is never selected automatically and does not create a live P2 session. The live loader fails visibly if the Experience ID is missing, the origin is unauthorized, a resource is unavailable, or a pinned resource does not validate; it does not fall back to `demo-config.json`.
 
 The researcher control plane exposes the contract v1 session-bootstrap and pinned Study/AOI/Question config resources under `/v1/sessions`. Consent records and survey answers stay in page memory, and survey persistence is not claimed. The event queue is bounded in memory and retains events through temporary network failures while this page remains open. It drops pending research events on withdrawal and does not flush them as part of withdrawal.

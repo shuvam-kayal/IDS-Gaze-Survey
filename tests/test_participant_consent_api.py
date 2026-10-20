@@ -38,7 +38,7 @@ class ConsentRepository:
             raise ValueError("research participation consent is required before camera consent")
         existing = self.consents.get(key)
         if existing:
-            if any(existing[field] != value[field] for field in ("decision", "policy_version", "occurred_at")):
+            if any(existing[field] != value[field] for field in ("decision", "policy_version")):
                 raise ValueError("participant consent decision conflict")
             return {**existing, "duplicate": True}
         self.consents[key] = value
@@ -79,6 +79,23 @@ def test_consent_scopes_are_separate_and_exact_retry_is_idempotent():
     with pytest.raises(HTTPException) as conflict:
         record_participant_consent("session-a", consent(decision="declined"), Response(), repository, "credential-a", "http://localhost:5173")
     assert conflict.value.status_code == 409
+
+
+def test_replayed_consent_with_new_timestamp_is_idempotent_and_keeps_original_time():
+    repository = ConsentRepository()
+    first = record_participant_consent(
+        "session-a", consent(), Response(), repository, "credential-a", "http://localhost:5173"
+    )
+    replay = record_participant_consent(
+        "session-a",
+        consent().model_copy(update={"occurred_at": "2026-10-20T10:00:01Z"}),
+        Response(),
+        repository,
+        "credential-a",
+        "http://localhost:5173",
+    )
+    assert replay.duplicate is True
+    assert replay.occurred_at == first.occurred_at
 
 
 def test_camera_consent_requires_research_consent_and_body_is_strict():
