@@ -14,7 +14,7 @@ Install the repository dependencies with `python -m pip install -e '.[dev]'`. Co
 
 The application injects four dependencies when calling `create_analytics_router`:
 
-- `get_feature_provider`: P3-owned retrieval service implementing `get_for_analysis(study_id, feature_set_version)`.
+- `get_feature_provider`: provide `TelemetryFeatureRecordProvider(p3_telemetry_repository, session_ids_for_study=...)`. The callback must return only the caller-authorized session IDs for the authorized study; the adapter reads P3 `list_feature_records(session_id, study_id=...)` and filters the requested feature-set version.
 - `get_repository`: returns a configured `AnalysisRepository` bound to the shared PostgreSQL database.
 - `get_study_authorizer`: returns an authorization callback that checks the requested `study_id` using P2/integrator identity.
 - `get_heatmap_provider` (optional): separately authorized coordinate/geometry retrieval; it must return P4 HeatmapInput v1 payloads keyed by canonical `feature_record_id`.

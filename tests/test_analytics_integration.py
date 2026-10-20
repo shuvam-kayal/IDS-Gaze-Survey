@@ -12,7 +12,11 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
 
 from services.analytics.engine import AnalysisError
-from services.analytics.feature_records import adapt_records, to_engine_record
+from services.analytics.feature_records import (
+    TelemetryFeatureRecordProvider,
+    adapt_records,
+    to_engine_record,
+)
 from services.analytics.integration import create_analytics_router
 from services.analytics.persistence import AnalysisRepository, AnalysisRow
 from services.feature_engine.gaze_pipeline import process_trial_gaze
@@ -29,8 +33,15 @@ def _load_json(path: str) -> Any:
 
 def p3_gaze_feature_record() -> dict[str, Any]:
     sample = _load_json("fixtures/gaze/provider-sample-valid.json")
-    sample["occurred_at"] = "2026-01-01T10:00:01Z"
-    sample["capture_time_ms"] = 1000
+    samples = [
+        {
+            **sample,
+            "sample_id": f"p4-p3-gaze-{offset}",
+            "occurred_at": f"2026-01-01T10:00:0{offset // 1000}.{offset % 1000:03d}Z",
+            "capture_time_ms": offset,
+        }
+        for offset in (1000, 1100, 1200)
+    ]
     event = {
         "schema_version": "1.0.0", "event_id": "evt-p4-p3-fixture",
         "experience_id": "exp-p4-fixture", "study_ids": [STUDY_ID],
@@ -57,7 +68,7 @@ def p3_gaze_feature_record() -> dict[str, Any]:
         "2026-01-01T10:00:00Z", "2026-01-01T10:00:10Z",
     )
     return process_trial_gaze(
-        [sample], experience_id="exp-p4-fixture", session_id="session-p4-p3-fixture",
+        samples, experience_id="exp-p4-fixture", session_id="session-p4-p3-fixture",
         study_id=STUDY_ID, trial_id="trial-p4-fixture", aoi_set_version="aoi-v1",
         observation_context=context, geometry_snapshots=[geometry], events=[event],
         start_event=start, requested_aoi_id="hero", viewport_width_px=1024,
@@ -118,8 +129,386 @@ def test_p3_gaze_feature_record_maps_aoi_and_does_not_invent_numeric_quality() -
     adapted = to_engine_record(record, study_id=STUDY_ID, feature_set_version=FEATURE_SET_VERSION)
     assert adapted["record_id"] == record["feature_record_id"]
     assert adapted["features"]["gaze.dwell_time_ms"]["aoi_id"] == "hero"
+    assert adapted["features"]["gaze.dwell_time_ms"]["value"] == 200
     assert "quality" not in adapted["features"]["gaze.dwell_time_ms"]
     assert adapted["modality"] == ["gaze", "interaction"]
+    assert "gaze.no_samples" not in adapted["missingness"]
+
+
+def test_p3_gaze_pipeline_to_p4_api_is_end_to_end_and_frozen_contract_valid() -> None:
+    record = p3_gaze_feature_record()
+    repository = MemoryRepository()
+
+    class P3TelemetryRepository:
+        def list_feature_records(
+            self, session_id: str, *, study_id: str | None = None
+        ) -> list[dict[str, Any]]:
+            assert session_id == record["session_id"]
+            assert study_id == record["study_id"]
+            return [record]
+
+    provider = TelemetryFeatureRecordProvider(
+        P3TelemetryRepository(),
+        session_ids_for_study=lambda study_id: [record["session_id"]]
+        if study_id == record["study_id"]
+        else [],
+    )
+
+    app = FastAPI()
+    app.include_router(create_analytics_router(
+        get_feature_provider=lambda: provider,
+        get_repository=lambda: repository,
+        get_study_authorizer=lambda: lambda study_id: study_id == record["study_id"],
+    ))
+    response = TestClient(app).post(
+        "/v1/analytics/analyze",
+        json=request(
+            study_id=record["study_id"],
+            analysis_types=["descriptive"],
+            parameters={"features": ["gaze.dwell_time_ms", "interaction.click_count"]},
+        ),
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    result_schema = _load_json("contracts/schemas/analysis-result.v1.schema.json")
+    Draft202012Validator(result_schema, format_checker=FormatChecker()).validate(result)
+    assert result["status"] == "succeeded"
+    assert result["sample_size"] == 1
+    assert result["modality"] == "gaze_and_non_gaze"
+    assert result["results"]["descriptive"]["gaze.dwell_time_ms"]["mean"] == 200
+    provenance = result["results"]["p4_provenance"]
+    assert provenance["feature_record_ids"] == [record["feature_record_id"]]
+    assert provenance["session_ids"] == [record["session_id"]]
+    assert "gaze.metric_undefined" in provenance["quality"]["missingness_reason_codes"]
+
+
+def test_p3_feature_provider_filters_version_and_reads_only_authorized_sessions() -> None:
+    gaze_record = p3_gaze_feature_record()
+    non_gaze_record = _load_json("fixtures/feature-record-non-gaze.json")
+    feature_store = {
+        gaze_record["session_id"]: [gaze_record, {**gaze_record, "feature_set_version": "0.9.0"}],
+        non_gaze_record["session_id"]: [non_gaze_record],
+    }
+    calls: list[tuple[str, str]] = []
+
+    class P3TelemetryRepository:
+        def list_feature_records(
+            self, session_id: str, *, study_id: str | None = None
+        ) -> list[dict[str, Any]]:
+            calls.append((session_id, str(study_id)))
+            return feature_store.get(session_id, [])
+
+    provider = TelemetryFeatureRecordProvider(
+        P3TelemetryRepository(),
+        session_ids_for_study=lambda study_id: [
+            gaze_record["session_id"],
+            non_gaze_record["session_id"],
+            gaze_record["session_id"],
+        ] if study_id == STUDY_ID else [],
+    )
+    records = provider.get_for_analysis(study_id=STUDY_ID, feature_set_version=FEATURE_SET_VERSION)
+    assert [row["feature_record_id"] for row in records] == sorted(
+        [gaze_record["feature_record_id"], non_gaze_record["feature_record_id"]]
+    )
+    assert calls == sorted({
+        (gaze_record["session_id"], STUDY_ID),
+        (non_gaze_record["session_id"], STUDY_ID),
+    })
+
+
+def test_p3_feature_provider_rejects_records_outside_authorized_session_scope() -> None:
+    record = _load_json("fixtures/feature-record-non-gaze.json")
+
+    class LeakyP3Repository:
+        def list_feature_records(self, _session_id: str, *, study_id: str | None = None) -> list[dict[str, Any]]:
+            return [record]
+
+    provider = TelemetryFeatureRecordProvider(
+        LeakyP3Repository(), session_ids_for_study=lambda _study_id: ["authorized-session-only"],
+    )
+    with pytest.raises(AnalysisError, match="outside the authorized study/session scope"):
+        provider.get_for_analysis(study_id=record["study_id"], feature_set_version=FEATURE_SET_VERSION)
+
+
+def test_p3_gaze_api_persists_record_then_p4_api_analyzes_that_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    from services.api import app as p3_api
+    from services.feature_engine.authorized_gaze import AuthorizedGazeContext
+
+    session_id = "session-p3-to-p4-api-e2e"
+    trial_id = "trial-p3-to-p4-api-e2e"
+    study_id = STUDY_ID
+    start_at = "2026-01-01T10:00:00Z"
+    end_at = "2026-01-01T10:00:10Z"
+    observation_context = TrialObservationContext(
+        session_id, study_id, trial_id, "aoi-p3-to-p4", start_at, end_at,
+    )
+    event = {
+        "schema_version": "1.0.0", "event_id": "evt-p3-to-p4-e2e",
+        "experience_id": "exp-p3-to-p4-e2e", "study_ids": [study_id],
+        "session_id": session_id, "event_type": "interaction.click",
+        "occurred_at": "2026-01-01T10:00:01Z", "payload": {},
+    }
+    start_event = {
+        **event, "event_id": "start-p3-to-p4-e2e",
+        "event_type": "trial.exposure_started", "occurred_at": start_at,
+        "payload": {"trial_id": trial_id},
+    }
+    geometry = {
+        "schema_version": "2.0.0", "snapshot_id": "geometry-p3-to-p4-e2e",
+        "session_id": session_id, "study_id": study_id,
+        "captured_at": "2026-01-01T09:59:00Z", "aoi_set_version": "aoi-p3-to-p4",
+        "viewport_width_px": 1024, "viewport_height_px": 768,
+        "scroll_x_px": 0, "scroll_y_px": 0, "zoom": 1,
+        "rectangles": [{"aoi_id": "hero", "left_px": 0, "top_px": 0,
+                        "right_px": 1024, "bottom_px": 768, "priority": 1}],
+    }
+    trusted_context = AuthorizedGazeContext(
+        experience_id="exp-p3-to-p4-e2e", session_id=session_id, study_id=study_id,
+        trial_id=trial_id, aoi_set_version="aoi-p3-to-p4",
+        observation_context=observation_context, geometry_snapshots=[geometry],
+        events=[event], start_event=start_event, requested_aoi_id="hero",
+        viewport_width_px=1024, viewport_height_px=768,
+    )
+
+    class TrustedContextProvider:
+        def resolve(self, request_body: dict[str, Any]) -> AuthorizedGazeContext:
+            assert request_body["session_id"] == session_id
+            return trusted_context
+
+    class P3TelemetryRepository:
+        def __init__(self) -> None:
+            self.records: dict[str, dict[str, Any]] = {}
+            self.associations: set[tuple[str, str]] = set()
+
+        def persist_gaze_association(self, association: dict[str, Any]) -> None:
+            self.associations.add((association["association_id"], association["session_id"]))
+
+        def persist_feature_record(self, record: dict[str, Any]) -> dict[str, Any]:
+            self.records[record["feature_record_id"]] = record
+            return record
+
+        def gaze_association_exists(self, association_id: str, session_id: str) -> bool:
+            return (association_id, session_id) in self.associations
+
+        def feature_record_exists(self, feature_record_id: str) -> bool:
+            return feature_record_id in self.records
+
+        def list_feature_records(self, requested_session: str, *, study_id: str | None = None) -> list[dict[str, Any]]:
+            return [
+                record for record in self.records.values()
+                if record["session_id"] == requested_session and record["study_id"] == study_id
+            ]
+
+    p3_repository = P3TelemetryRepository()
+    monkeypatch.setattr(p3_api, "_repository", p3_repository)
+    monkeypatch.setattr(p3_api, "_gaze_context_provider", TrustedContextProvider())
+    p4_repository = MemoryRepository()
+    p4_provider = TelemetryFeatureRecordProvider(
+        p3_repository, session_ids_for_study=lambda requested_study: [session_id]
+        if requested_study == study_id else [],
+    )
+
+    app = FastAPI()
+    app.add_api_route(
+        "/v1/gaze/observations", p3_api.ingest_gaze_observation, methods=["POST"],
+    )
+    app.include_router(create_analytics_router(
+        get_feature_provider=lambda: p4_provider,
+        get_repository=lambda: p4_repository,
+        get_study_authorizer=lambda: lambda requested_study: requested_study == study_id,
+    ))
+    provider_sample = _load_json("fixtures/gaze/provider-sample-valid.json")
+    provider_samples = [
+        {
+            **provider_sample,
+            "sample_id": f"api-e2e-sample-{offset}",
+            "capture_time_ms": offset,
+            "occurred_at": f"2026-01-01T10:00:0{offset // 1000}.{offset % 1000:03d}Z",
+        }
+        for offset in (1000, 1100, 1200)
+    ]
+    client = TestClient(app)
+    p3_response = client.post("/v1/gaze/observations", json={
+        "schema_version": "1.0.0", "request_id": "p3-to-p4-api-e2e",
+        "session_id": session_id, "provider_samples": provider_samples,
+    })
+    assert p3_response.status_code == 202, p3_response.text
+    feature_record_id = p3_response.json()["feature_record_id"]
+    assert feature_record_id in p3_repository.records
+
+    p4_response = client.post("/v1/analytics/analyze", json=request(
+        analysis_request_id="p3-to-p4-api-e2e", study_id=study_id,
+        parameters={"features": ["gaze.dwell_time_ms"]},
+    ))
+    assert p4_response.status_code == 200, p4_response.text
+    result = p4_response.json()
+    Draft202012Validator(
+        _load_json("contracts/schemas/analysis-result.v1.schema.json"),
+        format_checker=FormatChecker(),
+    ).validate(result)
+    assert result["results"]["descriptive"]["gaze.dwell_time_ms"]["mean"] == 200
+    assert result["results"]["p4_provenance"]["feature_record_ids"] == [feature_record_id]
+
+
+def test_p3_heatmap_provider_is_separate_scoped_and_runs_through_api() -> None:
+    record = p3_gaze_feature_record()
+    repository = MemoryRepository()
+    points = [{"x": 0.25, "y": 0.5}, {"x": 0.4, "y": 0.6}]
+
+    class P3FeatureRecordStore:
+        def get_for_analysis(self, *, study_id: str, feature_set_version: str) -> list[dict[str, Any]]:
+            return [record]
+
+    class AuthorizedHeatmapStore:
+        def get_for_feature_records(self, *, study_id: str, feature_record_ids: list[str]) -> dict[str, Any]:
+            assert study_id == record["study_id"]
+            assert feature_record_ids == [record["feature_record_id"]]
+            return {
+                record["feature_record_id"]: {
+                    "schema_version": "1.0.0",
+                    "feature_record_id": record["feature_record_id"],
+                    "study_id": record["study_id"],
+                    "session_id": record["session_id"],
+                    "geometry_snapshot_id": "geometry-p4-fixture",
+                    "coordinate_system": "normalized_viewport",
+                    "quality": 0.9,
+                    "points": points,
+                    "geometry_version": "aoi-v1",
+                    "aoi_geometry": {"hero": {"x": 0, "y": 0, "width": 1, "height": 1}},
+                }
+            }
+
+    app = FastAPI()
+    app.include_router(create_analytics_router(
+        get_feature_provider=lambda: P3FeatureRecordStore(),
+        get_repository=lambda: repository,
+        get_study_authorizer=lambda: lambda study_id: study_id == record["study_id"],
+        get_heatmap_provider=lambda: AuthorizedHeatmapStore(),
+    ))
+    payload = request(
+        study_id=record["study_id"],
+        parameters={
+            "heatmap_min_points": 2,
+            "p4_extension": {"schema_version": "1.0.0", "analysis_types": ["heatmap"]},
+        },
+    )
+    response = TestClient(app).post("/v1/analytics/analyze", json=payload)
+    assert response.status_code == 200, response.text
+    heatmap = response.json()["results"]["heatmap"]
+    assert heatmap["status"] == "succeeded"
+    assert heatmap["point_n"] == len(points)
+    assert heatmap["quality_mean"] == 0.9
+    assert heatmap["overlay_status"] == "available"
+    # The canonical FeatureRecord remains unchanged and does not acquire spatial data.
+    assert "spatial" not in record
+
+
+def test_p3_gaze_record_respects_each_frozen_modality_policy() -> None:
+    record = p3_gaze_feature_record()
+
+    class P3FeatureRecordStore:
+        def get_for_analysis(self, *, study_id: str, feature_set_version: str) -> list[dict[str, Any]]:
+            return [record]
+
+    for policy, expected_feature_names in (
+        ("best_available", {"gaze.dwell_time_ms", "interaction.click_count"}),
+        ("gaze_only", {"gaze.dwell_time_ms"}),
+        ("non_gaze_only", {"interaction.click_count"}),
+    ):
+        repository = MemoryRepository()
+        app = FastAPI()
+        app.include_router(create_analytics_router(
+            get_feature_provider=lambda: P3FeatureRecordStore(),
+            get_repository=lambda repository=repository: repository,
+            get_study_authorizer=lambda: lambda study_id: study_id == record["study_id"],
+        ))
+        response = TestClient(app).post(
+            "/v1/analytics/analyze",
+            json=request(
+                study_id=record["study_id"],
+                analysis_request_id=f"p4-policy-{policy}",
+                modality_policy=policy,
+                parameters={"features": ["gaze.dwell_time_ms", "interaction.click_count"]},
+            ),
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert set(body["results"]["descriptive"]) == expected_feature_names
+        assert body["results"]["p4_provenance"]["modality_policy"] == policy
+
+
+def test_p3_record_scope_and_study_authorization_fail_closed_before_analysis() -> None:
+    record = _load_json("fixtures/feature-record-non-gaze.json")
+    repository = MemoryRepository()
+    provider_calls = 0
+
+    class Provider:
+        def get_for_analysis(self, *, study_id: str, feature_set_version: str) -> list[dict[str, Any]]:
+            nonlocal provider_calls
+            provider_calls += 1
+            return [{**record, "study_id": "study-other"}]
+
+    app = FastAPI()
+    app.include_router(create_analytics_router(
+        get_feature_provider=lambda: Provider(), get_repository=lambda: repository,
+        get_study_authorizer=lambda: lambda _study_id: True,
+    ))
+    client = TestClient(app)
+    wrong_scope = client.post("/v1/analytics/analyze", json=request(study_id=record["study_id"]))
+    assert wrong_scope.status_code == 422
+    assert wrong_scope.json()["detail"]["code"] == "feature_record_scope_mismatch"
+
+    forbidden_app = FastAPI()
+    forbidden_app.include_router(create_analytics_router(
+        get_feature_provider=lambda: Provider(), get_repository=lambda: repository,
+        get_study_authorizer=lambda: lambda _study_id: False,
+    ))
+    forbidden = TestClient(forbidden_app).post(
+        "/v1/analytics/analyze", json=request(study_id=record["study_id"]),
+    )
+    assert forbidden.status_code == 403
+    assert provider_calls == 1
+
+
+def test_heatmap_geometry_version_cannot_drift_from_p3_aoi_version() -> None:
+    record = p3_gaze_feature_record()
+    heatmap = {
+        "schema_version": "1.0.0",
+        "study_id": record["study_id"],
+        "feature_record_id": record["feature_record_id"],
+        "session_id": record["session_id"],
+        "geometry_snapshot_id": "geometry-p4-fixture",
+        "coordinate_system": "normalized_viewport",
+        "quality": 0.9,
+        "points": [{"x": 0.2, "y": 0.3}],
+        "geometry_version": "aoi-stale-version",
+        "aoi_geometry": {"hero": {"x": 0, "y": 0, "width": 1, "height": 1}},
+    }
+    with pytest.raises(AnalysisError, match="AOI-set version"):
+        to_engine_record(
+            record, study_id=STUDY_ID, feature_set_version=FEATURE_SET_VERSION,
+            heatmap_input=heatmap,
+        )
+
+
+def test_shared_api_shell_can_mount_p4_router_without_replacing_p3_health_route() -> None:
+    from services.api.app import app as shared_app
+
+    repository = MemoryRepository()
+
+    class EmptyP3FeatureRecordStore:
+        def get_for_analysis(self, *, study_id: str, feature_set_version: str) -> list[dict[str, Any]]:
+            return []
+
+    shared_app.include_router(create_analytics_router(
+        get_feature_provider=lambda: EmptyP3FeatureRecordStore(),
+        get_repository=lambda: repository,
+        get_study_authorizer=lambda: lambda _study_id: True,
+    ))
+    client = TestClient(shared_app)
+    assert client.get("/health").status_code == 200
+    assert client.get("/v1/analytics/models").status_code == 200
+    assert client.post("/v1/analytics/analyze", json=request()).status_code == 200
 
 
 def test_canonical_feature_record_rejects_noncanonical_spatial_field() -> None:
