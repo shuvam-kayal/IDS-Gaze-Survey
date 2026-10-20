@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -27,8 +27,12 @@ from services.control_plane.auth import (
     set_session_cookies,
     verify_password,
 )
+from services.control_plane.participant_auth import require_participant_session
 from services.control_plane.store import ControlPlaneRepository
 from services.control_plane.survey_consolidation import consolidate_survey
+from services.gaze_engine.adapter import GazeNormalizationError
+from services.gaze_engine.geometry_bridge import validate_server_geometry_submission
+from services.telemetry.persistence import RecordIdentityConflict, TelemetryRepository
 
 PARTICIPANT_SESSION_COOKIE = "ids_participant_session"
 
@@ -42,6 +46,7 @@ def participant_cookie_secure() -> bool:
 router = APIRouter(prefix="/v1/control", tags=["control-plane"])
 participant_router = APIRouter(prefix="/v1", tags=["participant-configuration"])
 _repository: ControlPlaneRepository | None = None
+_telemetry_repository: TelemetryRepository | None = None
 _DUMMY_PASSWORD_HASH = hash_password("invalid-researcher-account-password")
 
 
@@ -55,6 +60,16 @@ def get_control_repository() -> ControlPlaneRepository:
                 status_code=503, detail="Experience registry storage is not configured"
             ) from exc
     return _repository
+
+
+def get_telemetry_repository() -> TelemetryRepository:
+    global _telemetry_repository
+    if _telemetry_repository is None:
+        try:
+            _telemetry_repository = TelemetryRepository.from_env()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail="Telemetry storage is not configured") from exc
+    return _telemetry_repository
 
 
 def canonicalize_origin(value: str) -> str:
@@ -92,6 +107,64 @@ def canonicalize_origin(value: str) -> str:
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ParticipantConsentRequest(StrictModel):
+    scope: Literal["research_participation", "camera_gaze"]
+    decision: Literal["accepted", "declined"]
+    policy_version: str = Field(min_length=1, max_length=255)
+    occurred_at: str = Field(min_length=1, max_length=64)
+
+    @field_validator("policy_version")
+    @classmethod
+    def nonblank_policy_version(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("policy_version must not be blank")
+        return value.strip()
+
+
+class ParticipantConsentResponse(StrictModel):
+    schema_version: Literal["1.0.0"] = "1.0.0"
+    scope: Literal["research_participation", "camera_gaze"]
+    decision: Literal["accepted", "declined"]
+    policy_version: str
+    occurred_at: str
+    duplicate: bool
+
+
+class ParticipantWithdrawalRequest(StrictModel):
+    occurred_at: str = Field(min_length=1, max_length=64)
+
+
+class ParticipantWithdrawalResponse(StrictModel):
+    schema_version: Literal["1.0.0"] = "1.0.0"
+    status: Literal["withdrawn"]
+    withdrawn_at: str
+
+
+class GeometrySubmissionRequest(StrictModel):
+    study_id: str = Field(min_length=1, max_length=255)
+    trial_id: str = Field(min_length=1, max_length=255)
+    snapshot: dict
+
+
+class GeometrySubmissionResponse(StrictModel):
+    schema_version: Literal["1.0.0"] = "1.0.0"
+    snapshot_id: str
+    status: Literal["accepted", "duplicate"]
+    duplicate: bool
+    provenance: Literal["server_validated"]
+
+
+def _participant_timestamp(value: str, field_name: str) -> datetime:
+    try:
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None or parsed.utcoffset() != UTC.utcoffset(None):
+            raise ValueError
+        return parsed
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"{field_name} must be a valid UTC RFC 3339 timestamp") from exc
 
 
 class LoginRequest(StrictModel):
@@ -774,6 +847,138 @@ def create_session_bootstrap(
         camera_capture_supported=body.camera_capture_supported,
         issued_at=issued_at.isoformat().replace("+00:00", "Z"),
         expires_at=expires_at.isoformat().replace("+00:00", "Z"),
+    )
+
+
+@participant_router.post("/sessions/{session_id}/consent", response_model=ParticipantConsentResponse)
+def record_participant_consent(
+    session_id: str,
+    body: ParticipantConsentRequest,
+    response: Response,
+    repository: Annotated[ControlPlaneRepository, Depends(get_control_repository)],
+    participant_cookie: Annotated[str | None, Cookie(alias=PARTICIPANT_SESSION_COOKIE)] = None,
+    origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+) -> ParticipantConsentResponse:
+    """Record one authenticated, durable participant consent decision.
+
+    The path session ID is only a routing key. The HttpOnly credential is the
+    authorization source, and the exact allowed Origin is the participant
+    state-changing request's CSRF boundary. No geometry or arbitrary state is
+    accepted here.
+    """
+    session = require_participant_session(session_id, participant_cookie, repository)
+    origin = _validate_participant_origin(session["experience_id"], origin_header, repository)
+    occurred_at = _participant_timestamp(body.occurred_at, "occurred_at")
+    if body.scope == "camera_gaze":
+        state = repository.participant_consent_state(session_id)
+        research = next((item for item in state["consent"] if item["scope"] == "research_participation"), None) if state else None
+        if research is None or research["decision"] != "accepted":
+            raise HTTPException(status_code=409, detail="research participation consent is required before camera consent")
+    try:
+        stored = repository.record_participant_consent(
+            session_id=session_id,
+            scope=body.scope,
+            decision=body.decision,
+            policy_version=body.policy_version,
+            occurred_at=occurred_at,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        raise HTTPException(status_code=409 if "conflict" in detail or "required" in detail else 422, detail=detail) from exc
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Vary"] = "Origin"
+    return ParticipantConsentResponse(
+        scope=stored["scope"], decision=stored["decision"], policy_version=stored["policy_version"],
+        occurred_at=stored["occurred_at"].isoformat().replace("+00:00", "Z"), duplicate=stored["duplicate"],
+    )
+
+
+@participant_router.post("/sessions/{session_id}/withdraw", response_model=ParticipantWithdrawalResponse)
+def withdraw_participant_session(
+    session_id: str,
+    body: ParticipantWithdrawalRequest,
+    response: Response,
+    repository: Annotated[ControlPlaneRepository, Depends(get_control_repository)],
+    participant_cookie: Annotated[str | None, Cookie(alias=PARTICIPANT_SESSION_COOKIE)] = None,
+    origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+) -> ParticipantWithdrawalResponse:
+    """Withdraw an authenticated participant session immediately.
+
+    Once the operation commits, the credential is intentionally no longer
+    authorized by ``require_participant_session``. A network retry therefore
+    receives 401 without changing state again; the durable operation itself is
+    idempotent and no second withdrawal timestamp is written.
+    """
+    session = require_participant_session(session_id, participant_cookie, repository)
+    origin = _validate_participant_origin(session["experience_id"], origin_header, repository)
+    occurred_at = _participant_timestamp(body.occurred_at, "occurred_at")
+    try:
+        stored = repository.withdraw_participant_session(session_id, occurred_at=occurred_at)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Vary"] = "Origin"
+    return ParticipantWithdrawalResponse(
+        status="withdrawn", withdrawn_at=stored["withdrawn_at"].isoformat().replace("+00:00", "Z"),
+    )
+
+
+@participant_router.post(
+    "/sessions/{session_id}/studies/{study_id}/trials/{trial_id}/geometry",
+    response_model=GeometrySubmissionResponse,
+)
+def submit_participant_geometry(
+    session_id: str,
+    study_id: str,
+    trial_id: str,
+    body: GeometrySubmissionRequest,
+    response: Response,
+    repository: Annotated[ControlPlaneRepository, Depends(get_control_repository)],
+    telemetry_repository: Annotated[TelemetryRepository, Depends(get_telemetry_repository)],
+    participant_cookie: Annotated[str | None, Cookie(alias=PARTICIPANT_SESSION_COOKIE)] = None,
+    origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+) -> GeometrySubmissionResponse:
+    """Validate and persist one study/trial-scoped geometry snapshot.
+
+    Route and body identifiers are selectors only. Assignment, consent, AOI
+    version, trial boundaries, and the trusted provenance are server-owned.
+    """
+    session = require_participant_session(session_id, participant_cookie, repository)
+    origin = _validate_participant_origin(session["experience_id"], origin_header, repository)
+    state = repository.participant_consent_state(session_id)
+    accepted_scopes = {
+        item["scope"]: item["decision"] for item in (state["consent"] if state else [])
+    }
+    if accepted_scopes.get("research_participation") != "accepted":
+        raise HTTPException(status_code=409, detail="research participation consent is required")
+    if accepted_scopes.get("camera_gaze") != "accepted":
+        raise HTTPException(status_code=409, detail="camera/gaze consent is required")
+    if body.study_id != study_id or body.trial_id != trial_id:
+        raise HTTPException(status_code=422, detail="geometry request path and body context do not match")
+    assignment = repository.get_assignment(session_id)
+    if assignment is None:
+        raise HTTPException(status_code=409, detail="participant study assignment is unavailable")
+    try:
+        normalized, scope = validate_server_geometry_submission(
+            body.snapshot,
+            participant_session=session,
+            assignment=assignment,
+            study_id=study_id,
+            trial_id=trial_id,
+            event_repository=telemetry_repository,
+        )
+        duplicate = telemetry_repository.persist_server_validated_geometry_snapshot(
+            normalized, trusted_scope=scope
+        )
+    except RecordIdentityConflict as exc:
+        raise HTTPException(status_code=409, detail="geometry snapshot identity conflict") from exc
+    except (GazeNormalizationError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Vary"] = "Origin"
+    return GeometrySubmissionResponse(
+        snapshot_id=normalized["snapshot_id"], status="duplicate" if duplicate else "accepted",
+        duplicate=duplicate, provenance="server_validated",
     )
 
 

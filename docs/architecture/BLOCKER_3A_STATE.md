@@ -1,7 +1,8 @@
 # Blocker 3A — Participant session and consent state
 
-Status: secure server-issued session binding added; participant consent
-transport remains pending.
+Status: secure server-issued session binding and authenticated participant
+consent/withdrawal transport are implemented; geometry attestation and the
+trusted gaze-context provider remain pending.
 
 ## Existing identity boundary
 
@@ -45,10 +46,22 @@ server reuses its existing session and assignment rather than creating another
 session or rotating the credential. A cookie for another Experience does not
 authorize access to that Experience; a new server-created session is issued.
 
-No public consent or withdrawal endpoint was added because CSRF and endpoint
-semantics still require approval. The participant demo still uses its explicitly
-documented in-memory callbacks. It must not describe those callbacks as durable
-persistence.
+Participant state-changing routes are now available at
+`POST /v1/sessions/{session_id}/consent` and
+`POST /v1/sessions/{session_id}/withdraw`. Both require the exact
+`ids_participant_session` HttpOnly credential and an authorized browser
+`Origin`; the path session ID is never accepted as authorization. Request
+bodies are strict and accept only the existing two consent scopes or a UTC
+withdrawal occurrence timestamp. Camera consent is rejected until durable
+research-participation consent is accepted. Exact consent retries return the
+stored decision with `duplicate: true`; conflicting reuse is rejected. A
+successful withdrawal immediately changes the session to `withdrawn`, so a
+later authorization attempt fails closed. SameSite=Strict, HttpOnly, `/v1`
+cookie scoping, Secure deployment defaults, credentialed CORS, and exact Origin
+checking remain in force; no separate participant CSRF token was introduced.
+The SDK exposes small credentialed request helpers for hosts to bind to its
+existing `persistConsent` and `flushWithdrawalAudit` callbacks. These helpers
+do not authorize a session or imply that a browser callback is consent.
 
 ## Required next decision
 
@@ -58,10 +71,9 @@ routes, rotation and logout semantics. It binds possession of a session
 credential to `participant_sessions.session_id`; it does not authenticate a
 real-world participant.
 
-After that decision, add narrowly scoped consent and withdrawal routes using
-the repository methods, then use those records in the trusted gaze context
-provider. Trial/exposure lifecycle and study-scoped geometry remain separate
-3B/3C prerequisites.
+The routes must be used by the participant host before consent can be consumed
+by a trusted gaze context provider. Trial/exposure lifecycle and study-scoped
+geometry remain separate 3B/3C prerequisites.
 
 ## Blocker 3B status
 

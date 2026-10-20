@@ -1,7 +1,7 @@
 # Blocker 3D prerequisite — Geometry trust boundary
 
-Status: proposed decision; no geometry is marked trusted and the production
-trusted gaze-context provider remains unset.
+Status: geometry-trust decision implemented as a narrow server-validation
+bridge; the production trusted gaze-context provider remains unset.
 
 ## Decision question
 
@@ -59,19 +59,20 @@ validated snapshot is eligible for authorization.
 
 ### 3. Proposed provenance marker
 
-The proposed internal provenance value is:
+The server-only provenance value is:
 
 ```text
 server_validated
 ```
 
-This is a proposal, not an implemented value. It may be assigned only by the
-server-side geometry bridge after all checks above succeed. Browser requests
+It may be assigned only by the server-side geometry bridge after all checks
+above succeed. Browser requests
 must not be allowed to provide or select this value. Existing rows remain
 `browser_submitted_untrusted`; none may be upgraded automatically.
 
-Adding or enforcing this marker in production code requires approval from the
-API/integrator, P1, P2, and P3 owners. It should remain internal persistence
+The bridge is implemented in
+`services/gaze_engine/geometry_bridge.py` and is called by the authenticated
+participant geometry route. It remains an internal persistence marker
 metadata and must not change GeometrySnapshot v2 or the public gaze request
 contract.
 
@@ -88,12 +89,16 @@ The durable control-plane model can distinguish:
 `withdrawn`. `verify_participant_session()` already rejects missing,
 withdrawn, closed, and expired sessions.
 
-However, the repository has no approved participant-facing consent or
-withdrawal HTTP endpoints. The participant demo still uses explicitly
-documented in-memory callbacks. Consequently, the production provider cannot
-yet claim that camera consent was durably granted or that withdrawal has been
-delivered through the real participant path. Consent must not be inferred from
-browser callbacks, cookie possession, or provider startup.
+Participant-facing consent and withdrawal routes now persist these scopes at
+`POST /v1/sessions/{session_id}/consent` and
+`POST /v1/sessions/{session_id}/withdraw`. They require the server-issued
+HttpOnly session credential, an authorized Origin, and strict request bodies;
+the path session ID is not authorization. Camera consent requires accepted
+research consent, and withdrawal immediately makes the credential fail closed.
+The SDK exposes credentialed helpers for hosts to call these routes. Consent
+must still not be inferred from browser callbacks, cookie possession, or
+provider startup, and the production provider does not consume these records
+until the trusted geometry and context bridge exists.
 
 This is an unresolved prerequisite for 3D: the API/integrator and P1 must
 approve the state-changing consent/withdrawal bridge and its CSRF/lifecycle
@@ -131,29 +136,27 @@ AuthorizedGazeContext = {
 }
 ```
 
-The future `TrustedGazeContextProvider.resolve(request)` should derive this
-object from the verified participant credential, server assignment, consent
-state, Blocker 3B lifecycle resolver, and a `server_validated` geometry
-snapshot. The browser request remains only an untrusted lookup/submission key;
-the frozen gaze-observation request and response contracts need not change.
+`TrustedGazeContextProvider.resolve(request)` now derives this object from the
+API-verified participant session, server assignment, consent state, Blocker 3B
+lifecycle resolver, and `server_validated` geometry snapshots. It is exposed
+only through the additive `1.1.0` authorized request path; the frozen v1 gaze
+observation request and route remain unchanged and fail-closed.
 
 ## Proposed team decision
 
-Approve the server-only `server_validated` provenance marker and a narrow
-API/integrator geometry bridge that may assign it only after P1 session/consent
-state, P2 assignment/AOI configuration, and P3 v2 validation agree. Require
-the bridge to preserve the current `browser_submitted_untrusted` records and
-keep `/v1/gaze/observations` fail-closed until that bridge and the consent /
-withdrawal lifecycle are implemented and tested.
+The bridge now assigns `server_validated` only after P1 session/consent state,
+P2 assignment/AOI configuration, persisted Blocker 3B lifecycle, and P3 v2
+validation agree. It preserves existing `browser_submitted_untrusted` rows and
+keeps `/v1/gaze/observations` fail-closed until the full trusted context
+provider is implemented and approved.
 
 ## Unresolved blockers
 
-1. P1/API approval of the server-side geometry attestation path.
-2. P1/API approval and implementation of durable participant consent and
-   withdrawal transport.
-3. A production connection from the participant geometry tracker to the
+1. P1/API approval of the server-side geometry attestation path and participant
+   consent routes.
+2. A production connection from the participant geometry tracker to the
    approved server bridge.
-4. PostgreSQL-backed integration tests proving the complete authorized path.
+3. PostgreSQL-backed integration tests proving the complete authorized path.
 
 ## Files inspected
 

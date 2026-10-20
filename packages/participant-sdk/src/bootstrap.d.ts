@@ -49,3 +49,15 @@ export function fetchParticipantAoiConfigurations(options: {
   aoiConfigUrl: (sessionId: string, studyId: string, aoiSetVersion: string) => string;
   fetchImpl?: typeof fetch;
 }): Promise<import("./geometry.js").ParsedAoiConfig[]>;
+export function recordParticipantConsent(options: {
+  endpoint: string;
+  sessionId: string;
+  record: import("./consent-lifecycle.js").ConsentRecord;
+  fetchImpl?: typeof fetch;
+}): Promise<{ schema_version: "1.0.0"; scope: import("./consent-lifecycle.js").ConsentRecord["scope"]; decision: import("./consent-lifecycle.js").ConsentChoice; policy_version: string; occurred_at: string; duplicate: boolean }>;
+export function withdrawParticipantSession(options: {
+  endpoint: string;
+  sessionId: string;
+  occurredAt: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{ schema_version: "1.0.0"; status: "withdrawn"; withdrawn_at: string }>;

@@ -448,10 +448,11 @@ class ControlPlaneRepository:
         self, *, session_id: str, scope: str, decision: str,
         policy_version: str, occurred_at: datetime,
     ) -> dict[str, Any]:
-        """Persist a consent decision for internal authorized callers.
+        """Persist one consent decision per session and scope.
 
-        This method intentionally has no public participant authorization path
-        until a participant identity contract exists.
+        The route layer authenticates the participant. This repository method
+        also enforces the dependency between the two consent scopes so an
+        internal caller cannot grant camera consent without research consent.
         """
         if scope not in {"research_participation", "camera_gaze"}:
             raise ValueError("unsupported participant consent scope")
@@ -465,13 +466,18 @@ class ControlPlaneRepository:
                 raise ValueError("unknown participant session")
             if session.status in {"withdrawn", "closed"} or session.expires_at <= occurred_at:
                 raise ValueError("participant session is not accepting consent")
+            if scope == "camera_gaze":
+                research = db.get(ParticipantConsentRecord, (session_id, "research_participation"))
+                if research is None or research.decision != "accepted":
+                    raise ValueError("research participation consent is required before camera consent")
             existing = db.get(ParticipantConsentRecord, (session_id, scope))
             if existing is not None:
                 if (existing.decision, existing.policy_version, existing.occurred_at) != (decision, policy_version, occurred_at):
                     raise ValueError("participant consent decision conflict")
                 return {"session_id": existing.session_id, "scope": existing.scope,
                         "decision": existing.decision, "policy_version": existing.policy_version,
-                        "occurred_at": existing.occurred_at, "updated_at": existing.updated_at}
+                        "occurred_at": existing.occurred_at, "updated_at": existing.updated_at,
+                        "duplicate": True}
             now = utc_now()
             db.add(ParticipantConsentRecord(
                 session_id=session_id, scope=scope, decision=decision,
@@ -479,7 +485,8 @@ class ControlPlaneRepository:
             ))
             session.updated_at = now
         return {"session_id": session_id, "scope": scope, "decision": decision,
-                "policy_version": policy_version, "occurred_at": occurred_at, "updated_at": now}
+                "policy_version": policy_version, "occurred_at": occurred_at, "updated_at": now,
+                "duplicate": False}
 
     def withdraw_participant_session(self, session_id: str, *, occurred_at: datetime) -> dict[str, Any]:
         """Idempotently revoke a server-created participant session."""

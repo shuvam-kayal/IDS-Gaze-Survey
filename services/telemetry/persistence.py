@@ -28,6 +28,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from services.gaze_engine.geometry import GeometryScope, validate_geometry_snapshot
+from services.gaze_engine.geometry_bridge import SERVER_VALIDATED_PROVENANCE
 from services.telemetry.ingestion import _parse_utc_timestamp, validate_event
 
 
@@ -345,6 +346,8 @@ class TelemetryRepository:
 
         if not isinstance(provenance, str) or not provenance or len(provenance) > 64:
             raise ValueError("geometry provenance must be a non-empty short string")
+        if provenance == SERVER_VALIDATED_PROVENANCE:
+            raise ValueError("server_validated geometry requires the server validation bridge")
         normalized = validate_geometry_snapshot(snapshot, scope=trusted_scope)
         fingerprint = self._geometry_fingerprint(normalized)
         captured_at = _parse_utc_timestamp(normalized["captured_at"])
@@ -378,6 +381,35 @@ class TelemetryRepository:
             )
         return False
 
+    def persist_server_validated_geometry_snapshot(
+        self, snapshot: dict[str, Any], *, trusted_scope: GeometryScope
+    ) -> bool:
+        """Persist geometry only after the server validation bridge succeeds."""
+        normalized = validate_geometry_snapshot(snapshot, scope=trusted_scope)
+        fingerprint = self._geometry_fingerprint(normalized)
+        captured_at = _parse_utc_timestamp(normalized["captured_at"])
+        with self.sessions.begin() as db:
+            existing = db.get(
+                GeometrySnapshotRow,
+                (normalized["session_id"], normalized["study_id"], normalized["snapshot_id"]),
+            )
+            if existing is not None:
+                if existing.fingerprint != fingerprint or existing.provenance != SERVER_VALIDATED_PROVENANCE:
+                    raise RecordIdentityConflict("geometry snapshot identity conflict")
+                return True
+            db.add(
+                GeometrySnapshotRow(
+                    session_id=normalized["session_id"], study_id=normalized["study_id"],
+                    snapshot_id=normalized["snapshot_id"], schema_version=normalized["schema_version"],
+                    captured_at=captured_at, aoi_set_version=normalized["aoi_set_version"],
+                    viewport_width_px=normalized["viewport_width_px"], viewport_height_px=normalized["viewport_height_px"],
+                    scroll_x_px=normalized["scroll_x_px"], scroll_y_px=normalized["scroll_y_px"], zoom=normalized["zoom"],
+                    rectangles=normalized["rectangles"], fingerprint=fingerprint, ingested_at=utc_now(),
+                    provenance=SERVER_VALIDATED_PROVENANCE,
+                )
+            )
+        return False
+
     def list_geometry_snapshots(
         self,
         session_id: str,
@@ -385,6 +417,7 @@ class TelemetryRepository:
         study_id: str,
         aoi_set_version: str,
         at: datetime | str | None = None,
+        provenance: str | None = None,
     ) -> list[dict[str, Any]]:
         """List only snapshots matching one session/study/AOI scope.
 
@@ -406,6 +439,10 @@ class TelemetryRepository:
                 GeometrySnapshotRow.study_id == study_id,
                 GeometrySnapshotRow.aoi_set_version == aoi_set_version,
             )
+            if provenance is not None:
+                if not isinstance(provenance, str) or not provenance:
+                    raise ValueError("geometry provenance filter must be non-empty")
+                statement = statement.where(GeometrySnapshotRow.provenance == provenance)
             if boundary is not None:
                 statement = statement.where(GeometrySnapshotRow.captured_at <= boundary)
             rows = db.scalars(

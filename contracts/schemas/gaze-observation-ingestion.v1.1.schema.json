@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/gaze-observation-ingestion.v1.1.schema.json",
+  "title": "AuthorizedGazeObservationIngestionRequest",
+  "description": "A bounded ProviderSample batch with untrusted study/trial selectors. Server state is authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "session_id", "study_id", "trial_id", "provider_samples"],
+  "properties": {
+    "schema_version": {"const": "1.1.0"},
+    "request_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "study_id": {"type": "string", "minLength": 1},
+    "trial_id": {"type": "string", "minLength": 1},
+    "provider_samples": {
+      "type": "array",
+      "maxItems": 250,
+      "items": {"$ref": "provider-sample.v1.schema.json"}
+    }
+  }
+}

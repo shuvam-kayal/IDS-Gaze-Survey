@@ -76,6 +76,27 @@ test("requests bootstrap without accepting or sending a browser origin value", a
   assert.equal(Object.keys(request.headers).some((key) => key.toLowerCase() === "origin"), false);
 });
 
+test("participant consent and withdrawal helpers use credentialed state-changing requests", async () => {
+  const { recordParticipantConsent, withdrawParticipantSession } = await import("../src/bootstrap.js");
+  const requests = [];
+  const fetchImpl = async (url, init) => {
+    requests.push({ url, init });
+    return { ok: true, json: async () => ({ schema_version: "1.0.0", status: "withdrawn" }) };
+  };
+  await recordParticipantConsent({
+    endpoint: "http://localhost:8000/v1/", sessionId: "session/a",
+    record: { scope: "research_participation", decision: "accepted", policy_version: "policy-v1", occurred_at: "2026-10-20T10:00:00Z" }, fetchImpl,
+  });
+  await withdrawParticipantSession({ endpoint: "http://localhost:8000/v1/", sessionId: "session/a", occurredAt: "2026-10-20T10:01:00Z", fetchImpl });
+  assert.equal(requests[0].url, "http://localhost:8000/v1/sessions/session%2Fa/consent");
+  assert.equal(requests[1].url, "http://localhost:8000/v1/sessions/session%2Fa/withdraw");
+  for (const request of requests) {
+    assert.equal(request.init.credentials, "include");
+    assert.equal(request.init.method, "POST");
+    assert.equal(request.init.headers["Content-Type"], "application/json");
+  }
+});
+
 test("loads version-pinned configs, separate survey plan, timing, and modality options", async () => {
   const { fetchParticipantConfiguration } = await import("../src/bootstrap.js");
   const configByStudy = new Map([

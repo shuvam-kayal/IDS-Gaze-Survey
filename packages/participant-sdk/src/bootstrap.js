@@ -140,6 +140,42 @@ async function getJson(fetchImpl, url) {
   return response.json();
 }
 
+function participantStateUrl(endpoint, sessionId, action) {
+  if (!nonEmptyString(endpoint) || !nonEmptyString(sessionId)) throw new TypeError("endpoint and sessionId are required");
+  return `${endpoint.replace(/\/$/, "")}/sessions/${encodeURIComponent(sessionId)}/${action}`;
+}
+
+async function postParticipantState(fetchImpl, url, body) {
+  const response = await fetchImpl(url, {
+    method: "POST",
+    mode: "cors",
+    credentials: "include",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`Participant state request failed (${response.status})`);
+  return response.json();
+}
+
+/** Persist a consent decision through the authenticated participant-session route. */
+export async function recordParticipantConsent({ endpoint, sessionId, record: consentRecord, fetchImpl = globalThis.fetch }) {
+  if (typeof fetchImpl !== "function") throw new TypeError("fetch is unavailable");
+  if (!record(consentRecord)) throw new TypeError("consent record is required");
+  assertKeys(consentRecord, ["scope", "decision", "policy_version", "occurred_at"], [], "ConsentRecord");
+  if (!["research_participation", "camera_gaze"].includes(consentRecord.scope)) throw new TypeError("ConsentRecord.scope is invalid");
+  if (!["accepted", "declined"].includes(consentRecord.decision)) throw new TypeError("ConsentRecord.decision is invalid");
+  if (!nonEmptyString(consentRecord.policy_version)) throw new TypeError("ConsentRecord.policy_version is required");
+  utcDate(consentRecord.occurred_at, "ConsentRecord.occurred_at");
+  return postParticipantState(fetchImpl, participantStateUrl(endpoint, sessionId, "consent"), consentRecord);
+}
+
+/** Persist withdrawal through the authenticated participant-session route. */
+export async function withdrawParticipantSession({ endpoint, sessionId, occurredAt, fetchImpl = globalThis.fetch }) {
+  if (typeof fetchImpl !== "function") throw new TypeError("fetch is unavailable");
+  utcDate(occurredAt, "occurredAt");
+  return postParticipantState(fetchImpl, participantStateUrl(endpoint, sessionId, "withdraw"), { occurred_at: occurredAt });
+}
+
 /**
  * Ask the server to authorize the browser Origin and issue a session bootstrap.
  * Never pass an Origin value: browsers set that protected header themselves.

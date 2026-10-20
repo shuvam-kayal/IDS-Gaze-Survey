@@ -4,7 +4,7 @@ export interface CameraCapability { requested: boolean; permission: "not_request
 /** Browser permission is not research consent; callers must gate capture on explicit consent separately. */
 export function chooseModality(camera: CameraCapability): Modality { return camera.permission === "granted" ? "gaze_and_non_gaze" : "non_gaze_only"; }
 
-export { fetchParticipantAoiConfigurations, fetchParticipantConfiguration, fetchSessionBootstrap, parseSessionBootstrap, parseStudyConfig, parseSurveyPlan } from "./bootstrap.js";
+export { fetchParticipantAoiConfigurations, fetchParticipantConfiguration, fetchSessionBootstrap, parseSessionBootstrap, parseStudyConfig, parseSurveyPlan, recordParticipantConsent, withdrawParticipantSession } from "./bootstrap.js";
 export { EventQueue } from "./event-queue.js";
 export type { StudyConfig } from "./bootstrap.js";
 export { mountParticipantEntry } from "./entry-widget.js";
