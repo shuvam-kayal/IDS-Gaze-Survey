@@ -132,13 +132,9 @@ class FakeRepository:
 
 @pytest.fixture(scope="module")
 def postgres_repository():
-    database_url = os.environ.get(
-        "TEST_DATABASE_URL",
-        os.environ.get(
-            "DATABASE_URL",
-            "postgresql+psycopg://attention:attention@localhost:5432/attention?connect_timeout=5",
-        ),
-    )
+    database_url = os.environ.get("TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required; refusing to use DATABASE_URL or the development database")
     engine = create_engine(database_url, pool_pre_ping=True)
     try:
         with engine.connect() as connection:

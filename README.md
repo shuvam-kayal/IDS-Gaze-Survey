@@ -2,13 +2,43 @@
 
 A research platform intended to combine survey responses, browser interaction telemetry and optional webcam-derived gaze signals to study user attention. This repository currently contains the **contract-first starter scaffold**, not a finished or production-ready product.
 
-## Start locally
+## First-time setup
 
-- Copy `.env.example` to `.env`.
-- Run `docker compose up --build`.
-- Check `http://localhost:8000/health` and `http://localhost:8000/docs`.
-- For checks, see [Local development](docs/setup/LOCAL_DEVELOPMENT.md).
-- On Linux, if Docker reports permission denied for `/var/run/docker.sock`, see the [Docker permissions note](docs/setup/LOCAL_DEVELOPMENT.md#docker-permissions).
+Windows PowerShell (the supported one-command path):
+
+```powershell
+.\scripts\setup.ps1
+```
+
+This checks Docker Desktop, Python 3.11+, Node/npm and repository files; creates
+`.venv`; installs the declared Python and npm dependencies; starts the existing
+PostgreSQL 16 Compose service; waits for its healthcheck; migrates the
+development database; creates the separate `attention_test` database if needed;
+and migrates that database independently. It never drops or resets either
+database. Local connection settings are written to ignored `.env.test` without
+printing passwords.
+
+Linux/macOS can run the same steps with PowerShell 7 (`pwsh
+./scripts/setup.ps1`), or follow [Local development](docs/setup/LOCAL_DEVELOPMENT.md).
+
+## Daily development
+
+Start the API and PostgreSQL with:
+
+```powershell
+.\scripts\start.ps1
+```
+
+Then check `http://localhost:8000/health` and `http://localhost:8000/docs`.
+Run ordinary unit tests with `.\.venv\Scripts\python.exe -m pytest -q` and the
+PostgreSQL integration tests with:
+
+```powershell
+.\scripts\test-postgres.ps1
+```
+
+Stop services without deleting database data with `docker compose down`.
+Never use `docker compose down -v` as part of routine setup or shutdown.
 
 ## Team ownership
 

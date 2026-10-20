@@ -21,13 +21,7 @@ from services.telemetry.persistence import (
     TelemetryRepository,
 )
 
-DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    os.environ.get(
-        "DATABASE_URL",
-        "postgresql+psycopg://attention:attention@localhost:5432/attention?connect_timeout=5",
-    ),
-)
+DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 
 
 def event(session_id: str, event_id: str, occurred_at: str, **changes: object) -> dict:
@@ -96,6 +90,8 @@ def feature_record(session_id: str, feature_record_id: str, *, modality: str = "
 @pytest.fixture(scope="module")
 def repository():
     pytest.importorskip("psycopg", reason="PostgreSQL integration tests require psycopg 3")
+    if not DATABASE_URL:
+        pytest.skip("TEST_DATABASE_URL is required; refusing to use DATABASE_URL or the development database")
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
     try:
         with engine.connect() as connection:

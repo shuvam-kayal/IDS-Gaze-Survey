@@ -14,14 +14,13 @@ from services.control_plane.store import (
     ParticipantSessionRecord,
 )
 
-DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    os.getenv("DATABASE_URL", "postgresql+psycopg://attention:attention@localhost:5432/attention?connect_timeout=5"),
-)
+DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 
 
 @pytest.fixture(scope="module")
 def repository():
+    if not DATABASE_URL:
+        pytest.skip("TEST_DATABASE_URL is required; refusing to use DATABASE_URL or the development database")
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
     try:
         with engine.connect() as connection:

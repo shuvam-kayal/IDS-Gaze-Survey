@@ -479,10 +479,9 @@ def test_study_contract_rejects_unsafe_rules_and_invalid_question_or_aoi_config(
 
 def test_postgresql_repository_persists_immutable_session_config_snapshots():
     pytest.importorskip("psycopg", reason="PostgreSQL integration tests require psycopg 3")
-    database_url = os.environ.get(
-        "TEST_DATABASE_URL",
-        os.environ.get("DATABASE_URL", "postgresql+psycopg://attention:attention@localhost:5432/attention?connect_timeout=3"),
-    )
+    database_url = os.environ.get("TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required; refusing to use DATABASE_URL or the development database")
     engine = create_engine(database_url, pool_pre_ping=True)
     try:
         with engine.connect() as connection:
