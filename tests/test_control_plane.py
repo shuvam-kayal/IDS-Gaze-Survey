@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -152,7 +153,7 @@ class MemoryControlRepository:
         if existing and (existing["experience_id"], existing["issued_at"], existing["expires_at"]) != (experience_id, issued_at, expires_at):
             raise ValueError("participant session identity conflict")
         self.participant_sessions.setdefault(session_id, record)
-        credential = f"test-credential-{session_id}"
+        credential = secrets.token_urlsafe(32)
         self.participant_credentials[credential] = session_id
         return self.participant_sessions[session_id], credential
 

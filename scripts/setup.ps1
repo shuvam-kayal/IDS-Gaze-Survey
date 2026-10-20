@@ -76,7 +76,7 @@ if ($LASTEXITCODE -ne 0) { throw "Development database migration failed; no test
 
 $null = & $VenvPython scripts\ensure_test_database.py --database-url $DevDatabaseUrl --database-name $TestDatabaseName
 if ($LASTEXITCODE -ne 0) { throw "Dedicated test database creation failed." }
-$testDatabaseUrl = "postgresql+psycopg://attention:attention@localhost:5432/$TestDatabaseName?connect_timeout=5"
+$testDatabaseUrl = "postgresql+psycopg://attention:attention@localhost:5432/${TestDatabaseName}?connect_timeout=5"
 $env:DATABASE_URL = $testDatabaseUrl
 $env:TEST_DATABASE_URL = $testDatabaseUrl
 & $VenvPython -m alembic upgrade head
