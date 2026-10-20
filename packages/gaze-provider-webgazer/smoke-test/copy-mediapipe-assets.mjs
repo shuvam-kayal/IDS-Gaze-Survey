@@ -3,7 +3,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const sourceRoot = join(packageRoot, "node_modules", "webgazer", "src", "mediapipe", "face_mesh");
+// Use the packaged distribution assets. The source tree also contains these
+// files, but the dist tree is the exact runtime layout shipped by webgazer.
+const sourceRoot = join(packageRoot, "node_modules", "webgazer", "dist", "mediapipe", "face_mesh");
 const destinationRoot = join(packageRoot, "smoke-test", "mediapipe", "face_mesh");
 
 // These are the runtime files referenced by the installed WebGazer/MediaPipe

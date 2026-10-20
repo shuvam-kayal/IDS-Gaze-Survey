@@ -356,24 +356,31 @@ metadata until a versioned schema change is approved.
 
 ## 9. Browser-to-gaze-provider boundary
 
-- P1 owns research consent, browser permission, camera tracks, visible status,
-  stop/withdrawal behavior, and participant-facing lifecycle.
-- P3 owns provider selection, provider-specific adapter code, normalization,
-  quality interpretation, and canonical GazeRecord semantics.
-- P1 supplies a consented camera stream and page/AOI geometry snapshots through
-  a narrow internal bridge. P1 does not import provider-native types. The
-  bridge payload is the machine-readable
+- P1 owns research consent, the participant-facing UI, session lifecycle,
+  withdrawal, teardown, and deciding when capture may begin. P1 invokes the
+  provider only after explicit consent.
+- P3 owns provider selection, provider-specific adapter code, camera
+  acquisition for providers that require it, release of streams acquired by
+  those providers, normalization, quality interpretation, and canonical
+  GazeRecord semantics.
+- The narrow internal bridge supplies consent authorization and initial
+  geometry; P1 does not import provider-native types or acquire a stream for a
+  provider that owns camera acquisition. The bridge's sample payload is the
+  machine-readable
   [`ProviderSample`](../../contracts/schemas/provider-sample.v1.schema.json)
   contract: `provider`, `provider_version`, `sample_id`, monotonic
   `capture_time_ms`, UTC `occurred_at`, nullable viewport pixel `x_px`/`y_px`,
   `valid`, and bounded `quality.confidence` plus `quality.flags`.
 - The lifecycle interface is `ProviderAdapter.start(input)` followed by
-  `ProviderAdapter.stop()`. `input` contains the `session_id`, consented
-  browser `MediaStream`, initial `GeometrySnapshot`, an `on_sample` callback,
-  and an `on_status(status, reason?)` callback. Status values are
-  `initializing`, `ready`, `unavailable`, and `stopped`. P1 calls `start` only
-  after consent and calls `stop` on denial, withdrawal, teardown, or expiry.
-  The corresponding TypeScript interfaces are in
+  `ProviderAdapter.stop()`. `input` contains `session_id`,
+  `consent_granted: true`, the initial `GeometrySnapshot`, an `on_sample`
+  callback, and an `on_status(status, reason?)` callback. There is no
+  mandatory `camera_stream` field: the selected P3 provider acquires its own
+  stream through its supported API after the consent authorization. Status
+  values are `initializing`, `ready`, `unavailable`, and `stopped`. P1 calls
+  `start` only after consent and calls `stop` on denial, withdrawal, teardown,
+  or expiry; P3 releases the stream it acquired during provider cleanup. The
+  corresponding TypeScript interfaces are in
   [`contracts/typescript/src/index.ts`](../../contracts/typescript/src/index.ts).
 - The P3 adapter may execute in browser JavaScript when the selected provider
   requires it. Its provider-specific implementation remains P3-owned even if
@@ -387,7 +394,10 @@ metadata until a versioned schema change is approved.
 - Provider initialization failure produces a reason-coded non-gaze path.
 
 This boundary keeps a future provider replaceable without changing P1's
-consent UX or P4's FeatureRecord consumer.
+consent UX or P4's FeatureRecord consumer. A provider that cannot safely
+consume an externally supplied stream must own acquisition behind this
+interface or be rejected during provider selection; private provider APIs are
+not part of the contract.
 
 ## 10. AOI, fixation, and metric baseline
 

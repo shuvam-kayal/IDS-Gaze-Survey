@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ids-gaze-survey.local/contracts/gaze-observation-ingestion-response.v1.schema.json",
+  "title": "GazeObservationIngestionResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "status", "duplicate", "feature_record_id", "sample_count"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "request_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["processed", "duplicate"]},
+    "duplicate": {"type": "boolean"},
+    "feature_record_id": {"type": "string", "minLength": 1},
+    "sample_count": {"type": "integer", "minimum": 0}
+  }
+}
