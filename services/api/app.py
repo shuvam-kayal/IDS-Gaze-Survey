@@ -35,7 +35,7 @@ if _cors_origins:
         allow_origins=_cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Accept", "Content-Type", "X-CSRF-Token"],
+        allow_headers=["Accept", "Content-Type", "Idempotency-Key", "X-CSRF-Token"],
     )
 
 app.include_router(control_plane_router)

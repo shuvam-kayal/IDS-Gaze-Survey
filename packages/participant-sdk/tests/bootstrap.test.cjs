@@ -72,6 +72,7 @@ test("requests bootstrap without accepting or sending a browser origin value", a
   });
   assert.equal(result.session_id, bootstrap.session_id);
   assert.deepEqual(JSON.parse(request.body), { experience_id: bootstrap.experience_id });
+  assert.equal(request.credentials, "include");
   assert.equal(Object.keys(request.headers).some((key) => key.toLowerCase() === "origin"), false);
 });
 
@@ -129,6 +130,30 @@ test("loads version-pinned configs, separate survey plan, timing, and modality o
   assert.equal(configuration.questionConfigs.length, 2);
   assert.equal(configuration.surveyPlanDetails.survey_plan_id, surveyPlan.survey_plan_id);
   assert.deepEqual(configuration.modalityOptions, { camera_capture_supported: true, gaze_required: false, non_gaze_available: true });
+});
+
+test("loads AOI configurations using each study's session assignment and pinned AOI version", async () => {
+  const { fetchParticipantAoiConfigurations } = await import("../src/bootstrap.js");
+  const calls = [];
+  const configs = await fetchParticipantAoiConfigurations({
+    bootstrap,
+    aoiConfigUrl: (sessionId, studyId, version) => `https://api.example.test/v1/sessions/${sessionId}/studies/${studyId}/aoi-config?config_version=${version}`,
+    fetchImpl: async (url) => {
+      calls.push(url);
+      const study = url.includes("study-a") ? bootstrap.eligible_studies[0] : bootstrap.eligible_studies[1];
+      return { ok: true, json: async () => ({
+        schema_version: "1.0.0", experience_id: bootstrap.experience_id, study_id: study.study_id,
+        aoi_set_version: study.aoi_set_version, aois: [],
+      }) };
+    },
+  });
+  assert.deepEqual(configs.map((config) => [config.study_id, config.aoi_set_version]), [["study-a", "aoi-v2"], ["study-b", "aoi-v1"]]);
+  assert.match(calls[0], /session-test-01/);
+  await assert.rejects(fetchParticipantAoiConfigurations({
+    bootstrap,
+    aoiConfigUrl: () => "https://api.example.test/aoi",
+    fetchImpl: async () => ({ ok: true, json: async () => ({ schema_version: "1.0.0", experience_id: "wrong", study_id: "study-a", aoi_set_version: "aoi-v2", aois: [] }) }),
+  }), /identity\/version/);
 });
 
 test("survey runtime resolves consolidated aliases and identical questions from plan provenance", async () => {

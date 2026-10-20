@@ -6,6 +6,11 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import OperationalError
 
+from services.gaze_engine.lifecycle import (
+    END_EVENT_TYPE,
+    START_EVENT_TYPE,
+    resolve_authorized_trial_lifecycle,
+)
 from services.telemetry.persistence import (
     FeatureRecordRow,
     GazeObservationAssociationRow,
@@ -141,6 +146,41 @@ def test_retrieval_orders_by_occurred_ingested_then_event_id(repository):
         "evt-early",
         "evt-late",
     ]
+
+
+def test_persisted_trial_lifecycle_survives_repository_reload(repository):
+    session_id = f"session-lifecycle-{uuid4()}"
+    start = event(session_id, "start-1", "2026-01-01T10:00:00Z",
+                  event_type=START_EVENT_TYPE, payload={"trial_id": "trial-a"})
+    end = event(session_id, "end-1", "2026-01-01T10:00:10Z",
+                event_type=END_EVENT_TYPE, payload={"trial_id": "trial-a"})
+    repository.ingest(start)
+    repository.ingest(end)
+    context, reason = resolve_authorized_trial_lifecycle(
+        repository,
+        participant_session={
+            "session_id": session_id,
+            "experience_id": "exp-test",
+            "status": "open",
+            "expires_at": "2026-01-02T00:00:00Z",
+        },
+        study_assignment={
+            "session_id": session_id,
+            "experience_id": "exp-test",
+            "assignments": [{
+                "study_id": "study-test",
+                "study_config": {"aoi_set_version": "aoi-test"},
+            }],
+        },
+        study_id="study-test",
+        trial_id="trial-a",
+        aoi_set_version="aoi-test",
+        now=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+    )
+    assert reason is None
+    assert context is not None
+    assert context.window_start == "2026-01-01T10:00:00Z"
+    assert context.window_end == "2026-01-01T10:00:10Z"
 
 
 def test_session_lifecycle_and_idempotent_deletion(repository):

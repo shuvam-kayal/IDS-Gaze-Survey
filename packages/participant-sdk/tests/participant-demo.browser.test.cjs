@@ -31,10 +31,6 @@ test("participant demo completes decline and non-gaze study journeys without bro
     browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_BIN || undefined, args: ["--no-sandbox"] });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     await context.addInitScript(() => {
-      Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
-        getUserMedia: async () => { throw new DOMException("Permission denied for test", "NotAllowedError"); },
-        addEventListener() {}, removeEventListener() {},
-      } });
     });
     page = await context.newPage();
     page.setDefaultTimeout(6000);
@@ -43,7 +39,7 @@ test("participant demo completes decline and non-gaze study journeys without bro
     page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
     page.on("requestfailed", (request) => errors.push(`${request.url()}: ${request.failure()?.errorText}`));
     await serveDemoRoutes(page);
-    await page.goto("http://localhost:5173", { waitUntil: "networkidle", timeout: 10000 });
+    await page.goto("http://localhost:5173/?mode=offline", { waitUntil: "networkidle", timeout: 10000 });
 
     await page.getByRole("button", { name: "View study invitation" }).click();
     await page.getByRole("button", { name: "Decline", exact: true }).click();
@@ -80,17 +76,12 @@ test("demo initializes only an injected provider after both consents on camera g
     browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_BIN || undefined, args: ["--no-sandbox"] });
     const context = await browser.newContext({ viewport: { width: 800, height: 900 } });
     await context.addInitScript(() => {
-      const track = { readyState: "live", addEventListener() {}, removeEventListener() {}, stop() { this.readyState = "ended"; } };
-      Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
-        getUserMedia: async () => ({ getTracks: () => [track], getVideoTracks: () => [track] }),
-        addEventListener() {}, removeEventListener() {},
-      } });
       window.providerStartCount = 0;
-      window.adapterReceivedOnlyCapability = false;
+      window.adapterReceivedConsent = false;
       window.IDS_GAZE_PROVIDER = {
         async start(input) {
           window.providerStartCount++;
-          window.adapterReceivedOnlyCapability = Boolean(input.camera_source && !("camera_stream" in input) && input.camera_source.getVideoTrack() === track);
+          window.adapterReceivedConsent = input.consent_granted === true && !("camera_source" in input) && !("camera_stream" in input);
           input.on_status("ready");
         },
         async stop() {},
@@ -101,7 +92,7 @@ test("demo initializes only an injected provider after both consents on camera g
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
     await serveDemoRoutes(page);
-    await page.goto("http://localhost:5173", { waitUntil: "networkidle", timeout: 10000 });
+    await page.goto("http://localhost:5173/?mode=offline", { waitUntil: "networkidle", timeout: 10000 });
     await page.getByRole("button", { name: "View study invitation" }).click();
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.getByRole("button", { name: "I agree to participate" }).click();
@@ -109,7 +100,7 @@ test("demo initializes only an injected provider after both consents on camera g
     await page.getByRole("button", { name: "Request camera and start provider" }).click();
     await page.getByText("Camera and gaze provider are active.").waitFor();
     assert.equal(await page.evaluate(() => window.providerStartCount), 1);
-    assert.equal(await page.evaluate(() => window.adapterReceivedOnlyCapability), true);
+    assert.equal(await page.evaluate(() => window.adapterReceivedConsent), true);
     await page.getByRole("button", { name: "Start trial" }).waitFor();
     assert.deepEqual(errors, []);
   } catch (error) {

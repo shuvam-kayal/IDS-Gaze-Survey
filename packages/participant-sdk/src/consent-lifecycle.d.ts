@@ -18,14 +18,10 @@ export interface ConsentState {
   camera: { decision: "unknown" | ConsentChoice | "not_offered"; policy_version: string; occurred_at: string | null; permission: CameraPermission; status: CameraLifecycleStatus; modality: "gaze_and_non_gaze" | "non_gaze_only"; missingness: string | null };
   withdrawal: { withdrawn: boolean; occurred_at: string | null; audit_status: "not_sent" | "sent" | "failed" | "not_configured" };
 }
-/** Revocable access to a consented video track. The MediaStream remains owned by P1. */
-export interface ConsentGatedCameraSource {
-  getVideoTrack(): MediaStreamTrack | null;
-  isActive(): boolean;
-}
 export interface ConsentGatedProviderInput {
   session_id: string;
-  camera_source: ConsentGatedCameraSource;
+  /** Consent authorization; the provider owns camera acquisition and cleanup. */
+  consent_granted: true;
   initial_geometry: GeometrySnapshot;
   on_sample: (sample: ProviderSample) => void;
   on_status: (status: ProviderStatus, reason?: string) => void;
@@ -56,13 +52,11 @@ export class ConsentLifecycle {
   registerInterval(callback: () => void, milliseconds: number): ReturnType<typeof setInterval>;
   startCamera(options: {
     sessionId: string;
-    mediaDevices?: Pick<MediaDevices, "getUserMedia">;
     provider: ConsentGatedProviderAdapter;
     initialGeometry: GeometrySnapshot;
     onSample: (sample: ProviderSample) => void;
     onStatus?: (status: ProviderStatus, reason?: string) => void;
     onCameraStatus?: (state: { status: CameraLifecycleStatus; modality: "gaze_and_non_gaze" | "non_gaze_only"; reason?: string; recoverable: boolean }) => void;
-    permissions?: Pick<Permissions, "query">;
   }): Promise<{ modality: "gaze_and_non_gaze" | "non_gaze_only"; permission: CameraPermission; status: CameraLifecycleStatus; reason: string | null; error?: unknown; recoverable?: boolean }>;
   withdraw(): Promise<ConsentState & { cleanup_complete: boolean; audit_status: ConsentState["withdrawal"]["audit_status"] }>;
   shutdown(): Promise<void>;

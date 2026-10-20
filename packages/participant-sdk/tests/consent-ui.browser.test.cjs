@@ -110,8 +110,7 @@ test("camera denial offers recovery and non-gaze continuation without blocking t
         onContinue: (result) => { window.continuedWith = result; },
         cameraOptions: {
           sessionId: "session-camera-ui",
-          mediaDevices: { getUserMedia: async () => { throw Object.assign(new Error("permission denied"), { name: "NotAllowedError" }); } },
-          provider: { start: async () => {}, stop() {} },
+          provider: { start: async ({ on_status }) => { on_status("unavailable", "gaze.permission_denied"); }, stop() {} },
           initialGeometry: { schema_version: "1.0.0" },
           onSample() {},
         },

@@ -22,10 +22,10 @@ the survey timing and config versions, then fetches the matching session-scoped
 SurveyPlan. It derives camera/modality options from the returned versioned
 configuration; it does not invent Study IDs, versions, or survey timing.
 
-The current API scaffold does not yet implement a session/bootstrap endpoint.
-The SDK client and tests use a configurable endpoint so it can integrate when
-the control-plane service is available. Do not treat a successful browser-side
-origin check as security; authorization belongs on that server endpoint.
+The control-plane service implements the session/bootstrap and pinned-resource
+endpoints under `/v1/sessions`. The SDK client keeps the endpoint configurable
+so hosts can select their API origin. Do not treat a successful browser-side
+origin check as security; authorization belongs on the server endpoint.
 
 ## Consent and withdrawal
 
@@ -39,11 +39,12 @@ declining it still allows non-gaze participation under the current frozen
 policy.
 
 The host should call `startCamera` from a participant action after both
-consents. It requests video only and retains the `MediaStream` inside the
-participant SDK. The provider gets session context, initial geometry, callbacks,
-and a revocable `camera_source` capability that exposes the active video track
-only while consent and capture remain active; the stream itself is never handed
-off. ProviderSamples pass through without normalization.
+consents. The SDK does not call `getUserMedia` or pass a stream/camera
+capability to the provider. It invokes the provider with:
+`{ session_id, consent_granted: true, initial_geometry, on_sample, on_status }`.
+The selected provider owns camera acquisition through its supported public API
+and releases only resources it acquired. ProviderSamples pass through without
+normalization.
 
 Camera denial, missing APIs or devices, interruption, unplugging, permission
 revocation, and provider startup failure produce a reason-coded
@@ -53,15 +54,16 @@ callback tells the host to launch the survey journey with the chosen modality
 and missingness reason. Research and survey participation remain available,
 and missing gaze is never filled with zero.
 
-The P3 adapter must implement the SDK's `ConsentGatedProviderAdapter` bridge
-shape to use `camera_source`; the older frozen `ProviderAdapterInput` contract
-accepts a raw `MediaStream` and is incompatible with this Stage 3 handoff. This
-SDK change does not alter shared contracts or P3-owned files. `withdraw()` stops
-registered collectors, camera tracks and the provider before invoking only the
-separately injected `flushWithdrawalAudit()` capability. It never flushes
-ordinary research events. An approved, idempotent withdrawal endpoint and
-secure consent persistence service still need to be supplied by the
-control-plane integration.
+The P3 adapter implements this consent-gated bridge and must report
+`initializing`, `ready`, `unavailable`, or `stopped`. Camera denial and provider
+startup failure become explicit non-gaze status/missingness while research and
+survey participation continue. `withdraw()` stops registered collectors and the
+provider before invoking only the separately injected
+`flushWithdrawalAudit()` capability. Generation guards discard late samples and
+callbacks after stop or withdrawal, and repeated stop/withdrawal calls are safe.
+The SDK never stops a foreign MediaStream. An approved, idempotent withdrawal
+endpoint and secure consent persistence service still need to be supplied by
+the control-plane integration.
 
 ## Trials, surveys, and interactions
 

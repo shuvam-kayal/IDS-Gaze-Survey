@@ -30,8 +30,8 @@ export function fetchSessionBootstrap(options: {
 export function fetchParticipantConfiguration(options: {
   bootstrapUrl: string;
   experienceId: string;
-  studyConfigUrl: (studyId: string, configVersion: string) => string;
-  questionConfigUrl: (studyId: string, questionSetVersion: string) => string;
+  studyConfigUrl: (studyId: string, configVersion: string, sessionId: string) => string;
+  questionConfigUrl: (studyId: string, questionSetVersion: string, sessionId: string) => string;
   surveyPlanUrl: (sessionId: string) => string;
   surveyPlanDetailsUrl: (sessionId: string) => string;
   fetchImpl?: typeof fetch;
@@ -44,3 +44,8 @@ export function fetchParticipantConfiguration(options: {
   surveyPlanDetails: { schema_version: "1.0.0"; survey_plan_id: string; questions: Array<{ question_id: string; question: import("./survey.js").QuestionDefinition; origins: Array<{ study_id: string; question_set_version: string; question_version: string; order: number }> }>; question_origins: Record<string, unknown>; timing_rules: unknown[] };
   modalityOptions: { camera_capture_supported: boolean; gaze_required: boolean; non_gaze_available: true };
 }>;
+export function fetchParticipantAoiConfigurations(options: {
+  bootstrap: SessionBootstrapPayload;
+  aoiConfigUrl: (sessionId: string, studyId: string, aoiSetVersion: string) => string;
+  fetchImpl?: typeof fetch;
+}): Promise<import("./geometry.js").ParsedAoiConfig[]>;

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import secrets
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Integer, String, create_engine, select
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Mapped, mapped_column, sessionmaker
@@ -100,6 +102,42 @@ class StudyAssignmentRecord(Base):
     experience_id: Mapped[str] = mapped_column(String(36), nullable=False)
     assigned_studies: Mapped[list[dict[str, Any]]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False)
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ParticipantSessionRecord(Base):
+    """Server-created participant session lifecycle state.
+
+    The credential verifier binds possession of a server-issued cookie to this
+    session. It does not identify a participant in the real world.
+    """
+
+    __tablename__ = "participant_sessions"
+
+    session_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    experience_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    credential_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+
+
+class ParticipantConsentRecord(Base):
+    """Latest durable consent decision for one session and consent scope."""
+
+    __tablename__ = "participant_consent_records"
+
+    session_id: Mapped[str] = mapped_column(
+        String(255), ForeignKey("participant_sessions.session_id", ondelete="CASCADE"), primary_key=True
+    )
+    scope: Mapped[str] = mapped_column(String(32), primary_key=True)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(255), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class ControlPlaneRepository:
@@ -331,6 +369,145 @@ class ControlPlaneRepository:
             row = db.get(StudyAssignmentRecord, session_id)
             return ({"session_id": row.session_id, "experience_id": row.experience_id,
                      "assignments": row.assigned_studies, "assigned_at": row.assigned_at} if row else None)
+
+    @staticmethod
+    def _session_dict(row: ParticipantSessionRecord) -> dict[str, Any]:
+        return {
+            "session_id": row.session_id,
+            "experience_id": row.experience_id,
+            "status": row.status,
+            "issued_at": row.issued_at,
+            "expires_at": row.expires_at,
+            "closed_at": row.closed_at,
+            "withdrawn_at": row.withdrawn_at,
+            "created_at": row.created_at,
+            "updated_at": row.updated_at,
+        }
+
+    def create_participant_session(
+        self, *, session_id: str, experience_id: str, issued_at: datetime, expires_at: datetime
+    ) -> tuple[dict[str, Any], str]:
+        """Persist server-issued session state and return a one-time raw credential.
+
+        The raw credential is returned only to the bootstrap caller so it can
+        become an HttpOnly cookie. It is never stored or returned by lookup.
+        """
+        if expires_at <= issued_at:
+            raise ValueError("participant session expiry must be after issuance")
+        now = utc_now()
+        with self.sessions.begin() as db:
+            row = db.get(ParticipantSessionRecord, session_id)
+            if row is not None:
+                if row.experience_id != experience_id or row.issued_at != issued_at or row.expires_at != expires_at:
+                    raise ValueError("participant session identity conflict")
+                raise ValueError("participant session already exists without a new binding")
+            raw_credential = secrets.token_urlsafe(32)
+            row = ParticipantSessionRecord(
+                session_id=session_id, experience_id=experience_id, status="open",
+                issued_at=issued_at, expires_at=expires_at, created_at=now, updated_at=now,
+                credential_hash=hashlib.sha256(raw_credential.encode("utf-8")).hexdigest(),
+            )
+            db.add(row)
+        return self._session_dict(row), raw_credential
+
+    def get_participant_session(self, session_id: str) -> dict[str, Any] | None:
+        with self.sessions() as db:
+            row = db.get(ParticipantSessionRecord, session_id)
+            return self._session_dict(row) if row else None
+
+    def verify_participant_session(self, *, session_id: str, credential: str) -> dict[str, Any] | None:
+        """Verify the credential/session binding without returning secrets."""
+        if not isinstance(credential, str) or not credential:
+            return None
+        digest = hashlib.sha256(credential.encode("utf-8")).hexdigest()
+        now = utc_now()
+        with self.sessions() as db:
+            row = db.scalar(select(ParticipantSessionRecord).where(
+                ParticipantSessionRecord.session_id == session_id,
+                ParticipantSessionRecord.credential_hash == digest,
+            ))
+            if row is None or row.status != "open" or row.expires_at <= now:
+                return None
+            return self._session_dict(row)
+
+    def find_participant_session_by_credential(self, credential: str) -> dict[str, Any] | None:
+        """Find one live session for a credential without exposing its hash."""
+        if not isinstance(credential, str) or not credential:
+            return None
+        digest = hashlib.sha256(credential.encode("utf-8")).hexdigest()
+        now = utc_now()
+        with self.sessions() as db:
+            row = db.scalar(select(ParticipantSessionRecord).where(
+                ParticipantSessionRecord.credential_hash == digest,
+            ))
+            if row is None or row.status != "open" or row.expires_at <= now:
+                return None
+            return self._session_dict(row)
+
+    def record_participant_consent(
+        self, *, session_id: str, scope: str, decision: str,
+        policy_version: str, occurred_at: datetime,
+    ) -> dict[str, Any]:
+        """Persist a consent decision for internal authorized callers.
+
+        This method intentionally has no public participant authorization path
+        until a participant identity contract exists.
+        """
+        if scope not in {"research_participation", "camera_gaze"}:
+            raise ValueError("unsupported participant consent scope")
+        if decision not in {"accepted", "declined"}:
+            raise ValueError("unsupported participant consent decision")
+        if not policy_version:
+            raise ValueError("policy_version is required")
+        with self.sessions.begin() as db:
+            session = db.get(ParticipantSessionRecord, session_id)
+            if session is None:
+                raise ValueError("unknown participant session")
+            if session.status in {"withdrawn", "closed"} or session.expires_at <= occurred_at:
+                raise ValueError("participant session is not accepting consent")
+            existing = db.get(ParticipantConsentRecord, (session_id, scope))
+            if existing is not None:
+                if (existing.decision, existing.policy_version, existing.occurred_at) != (decision, policy_version, occurred_at):
+                    raise ValueError("participant consent decision conflict")
+                return {"session_id": existing.session_id, "scope": existing.scope,
+                        "decision": existing.decision, "policy_version": existing.policy_version,
+                        "occurred_at": existing.occurred_at, "updated_at": existing.updated_at}
+            now = utc_now()
+            db.add(ParticipantConsentRecord(
+                session_id=session_id, scope=scope, decision=decision,
+                policy_version=policy_version, occurred_at=occurred_at, updated_at=now,
+            ))
+            session.updated_at = now
+        return {"session_id": session_id, "scope": scope, "decision": decision,
+                "policy_version": policy_version, "occurred_at": occurred_at, "updated_at": now}
+
+    def withdraw_participant_session(self, session_id: str, *, occurred_at: datetime) -> dict[str, Any]:
+        """Idempotently revoke a server-created participant session."""
+        with self.sessions.begin() as db:
+            row = db.get(ParticipantSessionRecord, session_id)
+            if row is None:
+                raise ValueError("unknown participant session")
+            if row.withdrawn_at is None:
+                row.withdrawn_at = occurred_at
+                row.status = "withdrawn"
+                row.updated_at = utc_now()
+            return self._session_dict(row)
+
+    def participant_consent_state(self, session_id: str) -> dict[str, Any] | None:
+        with self.sessions() as db:
+            session = db.get(ParticipantSessionRecord, session_id)
+            if session is None:
+                return None
+            records = db.scalars(
+                select(ParticipantConsentRecord).where(
+                    ParticipantConsentRecord.session_id == session_id
+                ).order_by(ParticipantConsentRecord.scope)
+            ).all()
+            return {"session": self._session_dict(session), "consent": [
+                {"scope": row.scope, "decision": row.decision,
+                 "policy_version": row.policy_version, "occurred_at": row.occurred_at,
+                 "updated_at": row.updated_at} for row in records
+            ]}
 
     def list_audit_events(self, *, target_id: str | None = None) -> list[dict[str, Any]]:
         with self.sessions() as db:

@@ -1,4 +1,5 @@
 import { parseQuestionConfig } from "./survey.js";
+import { parseAoiConfig } from "./geometry.js";
 
 const BOOTSTRAP_VERSION = "1.0.0";
 const CONFIG_VERSION = "1.0.0";
@@ -134,7 +135,7 @@ export function parseSurveyPlan(value, { bootstrap } = {}) {
 }
 
 async function getJson(fetchImpl, url) {
-  const response = await fetchImpl(url, { method: "GET", credentials: "omit", headers: { Accept: "application/json" } });
+  const response = await fetchImpl(url, { method: "GET", credentials: "include", headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(`Configuration request failed (${response.status})`);
   return response.json();
 }
@@ -150,7 +151,7 @@ export async function fetchSessionBootstrap({ endpoint, experienceId, fetchImpl 
   const response = await fetchImpl(endpoint, {
     method: "POST",
     mode: "cors",
-    credentials: "omit",
+    credentials: "include",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ experience_id: experienceId }),
   });
@@ -174,11 +175,11 @@ export async function fetchParticipantConfiguration({
   }
   const bootstrap = await fetchSessionBootstrap({ endpoint: bootstrapUrl, experienceId, fetchImpl, now });
   const studyConfigs = await Promise.all(bootstrap.eligible_studies.map(async (study) => {
-    const config = await getJson(fetchImpl, studyConfigUrl(study.study_id, study.config_version));
+    const config = await getJson(fetchImpl, studyConfigUrl(study.study_id, study.config_version, bootstrap.session_id));
     return parseStudyConfig(config, { bootstrap, study });
   }));
   const questionConfigs = await Promise.all(bootstrap.eligible_studies.map(async (study) => {
-    const raw = await getJson(fetchImpl, questionConfigUrl(study.study_id, study.question_set_version));
+    const raw = await getJson(fetchImpl, questionConfigUrl(study.study_id, study.question_set_version, bootstrap.session_id));
     const config = parseQuestionConfig(raw);
     if (config.study_id !== study.study_id || config.question_set_version !== study.question_set_version) {
       throw new TypeError("QuestionConfig identity/version does not match the SessionBootstrap pin");
@@ -207,4 +208,26 @@ export async function fetchParticipantConfiguration({
       non_gaze_available: true,
     },
   };
+}
+
+/** Fetch each study's AOI configuration at the AOI version pinned by bootstrap. */
+export async function fetchParticipantAoiConfigurations({
+  bootstrap,
+  aoiConfigUrl,
+  fetchImpl = globalThis.fetch,
+}) {
+  if (!record(bootstrap) || !Array.isArray(bootstrap.eligible_studies)) {
+    throw new TypeError("a parsed SessionBootstrap is required");
+  }
+  if (typeof aoiConfigUrl !== "function") throw new TypeError("aoi config URL resolver is required");
+  const configs = await Promise.all(bootstrap.eligible_studies.map(async (study) => {
+    const raw = await getJson(fetchImpl, aoiConfigUrl(bootstrap.session_id, study.study_id, study.aoi_set_version));
+    const config = parseAoiConfig(raw);
+    if (config.experience_id !== bootstrap.experience_id ||
+        config.study_id !== study.study_id || config.aoi_set_version !== study.aoi_set_version) {
+      throw new TypeError("AOIConfig identity/version does not match the SessionBootstrap pin");
+    }
+    return config;
+  }));
+  return configs;
 }

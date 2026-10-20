@@ -4,9 +4,9 @@ import { TrialLifecycle } from "../../packages/participant-sdk/src/trial-lifecyc
 import { createSurveyRuntime, mountSurvey } from "../../packages/participant-sdk/src/survey.js";
 import { mountConsentFlow } from "../../packages/participant-sdk/src/consent-ui.js";
 import { mountParticipantEntry } from "../../packages/participant-sdk/src/entry-widget.js";
-import { parseSessionBootstrap, parseStudyConfig, parseSurveyPlan } from "../../packages/participant-sdk/src/bootstrap.js";
 import { startInteractionCapture } from "../../packages/participant-sdk/src/interactions.js";
 import { createGeometryTracker } from "../../packages/participant-sdk/src/geometry.js";
+import { loadLiveConfig, loadOfflineConfig, runtimeSelection } from "./runtime-config.js";
 
 const $ = (selector) => document.querySelector(selector);
 const experienceRoot = $("#experience");
@@ -39,16 +39,6 @@ function context() {
 function makeEnvelope(type, payload) {
   const ctx = context();
   return { schema_version: "1.0.0", event_id: crypto.randomUUID(), experience_id: ctx.experience_id, study_ids: ctx.study_ids, session_id: ctx.session_id, event_type: type, occurred_at: new Date().toISOString(), payload };
-}
-async function loadDemoConfig() {
-  const response = await fetch("./demo-config.json", { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error("Could not load the local demo configuration");
-  const value = await response.json();
-  if (value.schema_version !== "1.0.0" || value.demo_mode !== true || typeof value.event_ingestion_url !== "string") throw new Error("Unsupported demo configuration");
-  const bootstrap = parseSessionBootstrap(value.session_bootstrap);
-  const study = parseStudyConfig(value.study_config, { bootstrap, study: bootstrap.eligible_studies[0] });
-  const surveyPlan = parseSurveyPlan(value.survey_plan, { bootstrap });
-  return { ...value, session_bootstrap: bootstrap, study_config: study, survey_plan: surveyPlan };
 }
 function showTrial() {
   const panel = $("#trial");
@@ -97,7 +87,7 @@ function startJourney(modality) {
 }
 
 async function startConsent() {
-  if (!config) throw new Error("The local demo configuration is not ready");
+  if (!config) throw new Error("The participant configuration is not ready");
   experienceRoot.classList.remove("hidden");
   consent = new ConsentLifecycle({ policy: config.consent_policy,
     persistConsent: async (record) => { console.info("Demo consent choice recorded in memory:", record.scope, record.decision); },
@@ -122,8 +112,19 @@ async function startConsent() {
   });
 }
 
-void loadDemoConfig().then((loaded) => {
+const selection = runtimeSelection();
+const loadConfig = selection.mode === "offline"
+  ? () => loadOfflineConfig()
+  : () => loadLiveConfig({ apiBaseUrl: selection.apiBaseUrl, experienceId: selection.experienceId });
+
+void loadConfig().then((loaded) => {
   config = loaded;
+  const modeNotice = document.createElement("p");
+  modeNotice.className = "quiet";
+  modeNotice.textContent = loaded.mode === "offline"
+    ? "Offline demo mode: checked-in fixture only; no live P2 session is created."
+    : `Live P2 mode: session configuration loaded for Experience ${loaded.session_bootstrap.experience_id}.`;
+  $("#journey").prepend(modeNotice);
   queue = new EventQueue({ endpoint: config.event_ingestion_url, maxQueueSize: 500 });
   detachQueueLifecycle = queue.attachLifecycle({ window });
   mountParticipantEntry($("#entry"), {
@@ -132,6 +133,6 @@ void loadDemoConfig().then((loaded) => {
     onAccept: startConsent,
   });
 }).catch((error) => {
-  $("#entry").textContent = "The demo configuration could not be loaded. Refresh to try again.";
+  $("#entry").textContent = `Participant configuration could not be loaded: ${error.message}`;
   console.error(error);
 });

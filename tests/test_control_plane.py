@@ -24,6 +24,8 @@ class MemoryControlRepository:
         self.audit = []
         self.studies = {}
         self.assignments = {}
+        self.participant_sessions = {}
+        self.participant_credentials = {}
 
     @staticmethod
     def _now():
@@ -141,6 +143,22 @@ class MemoryControlRepository:
         if session_id not in self.assignments: return None
         first = next(s for s in self.studies.values() if s["study_id"] == self.assignments[session_id][0]["study_id"])
         return {"session_id": session_id, "experience_id": first["experience_id"], "assignments": self.assignments[session_id], "assigned_at": self._now()}
+
+    def create_participant_session(self, *, session_id, experience_id, issued_at, expires_at):
+        record = {"session_id": session_id, "experience_id": experience_id, "status": "open",
+                  "issued_at": issued_at, "expires_at": expires_at, "closed_at": None,
+                  "withdrawn_at": None, "created_at": issued_at, "updated_at": issued_at}
+        existing = self.participant_sessions.get(session_id)
+        if existing and (existing["experience_id"], existing["issued_at"], existing["expires_at"]) != (experience_id, issued_at, expires_at):
+            raise ValueError("participant session identity conflict")
+        self.participant_sessions.setdefault(session_id, record)
+        credential = f"test-credential-{session_id}"
+        self.participant_credentials[credential] = session_id
+        return self.participant_sessions[session_id], credential
+
+    def find_participant_session_by_credential(self, credential):
+        session_id = self.participant_credentials.get(credential)
+        return self.participant_sessions.get(session_id) if session_id else None
 
     def _audit(self, actor_id, actor_role, action, target_id, details):
         self.audit.append(
@@ -477,11 +495,12 @@ def test_postgresql_repository_persists_immutable_session_config_snapshots():
     draft = repository.save_study(None, experience_id=experience["experience_id"], name="Pinned", priority=3,
         eligibility_rules={"all": []}, config={"schema_version": "1.0.0", "timing_rules": {"duration_ms": 10}, "aois": [], "questions": []}, actor_id="researcher", actor_role="researcher")
     published = repository.publish_study(draft["study_id"], actor_id="researcher", actor_role="researcher")
-    assignment = repository.assign_studies(experience["experience_id"], "stable-session", {}, "eligible_all")
+    session_id = f"stable-session-{uuid4()}"
+    assignment = repository.assign_studies(experience["experience_id"], session_id, {}, "eligible_all")
     assert assignment[0]["config_version"] == published["config_version"]
     assert assignment[0]["study_config"] == published["config"]
     assert len(published["config_version"]) <= 80
-    assert repository.assign_studies(experience["experience_id"], "stable-session", {"later": True}, "eligible_all") == assignment
+    assert repository.assign_studies(experience["experience_id"], session_id, {"later": True}, "eligible_all") == assignment
     with pytest.raises(ValueError, match="Only existing draft Studies"):
         repository.save_study(draft["study_id"], experience_id=experience["experience_id"], name="mutated", priority=0,
             eligibility_rules={"all": []}, config={}, actor_id="researcher", actor_role="researcher")
@@ -577,6 +596,11 @@ def test_participant_session_bootstrap_and_pinned_resources_match_contracts(cont
     bootstrap_response = client.post("/v1/sessions/bootstrap", headers={"Origin": "https://study.example"},
         json={"experience_id": exp_id, "attributes": {}, "camera_capture_supported": True})
     assert bootstrap_response.status_code == 200
+    participant_cookie = bootstrap_response.headers.get("set-cookie", "")
+    assert "ids_participant_session=" in participant_cookie
+    assert "httponly" in participant_cookie.lower()
+    assert "samesite=strict" in participant_cookie.lower()
+    assert bootstrap_response.json()["session_id"] not in participant_cookie
     bootstrap = bootstrap_response.json()
     schemas = Path(__file__).parents[1] / "contracts" / "schemas"
     bootstrap_schema = json.loads((schemas / "session-bootstrap.v1.schema.json").read_text())

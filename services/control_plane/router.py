@@ -8,7 +8,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from services.control_plane.auth import (
@@ -29,6 +29,15 @@ from services.control_plane.auth import (
 )
 from services.control_plane.store import ControlPlaneRepository
 from services.control_plane.survey_consolidation import consolidate_survey
+
+PARTICIPANT_SESSION_COOKIE = "ids_participant_session"
+
+
+def participant_cookie_secure() -> bool:
+    """Force Secure cookies outside explicitly local development modes."""
+    setting = os.getenv("PARTICIPANT_COOKIE_SECURE", "").lower()
+    development = os.getenv("APP_ENV", "production").lower() in {"development", "dev", "test", "local"}
+    return setting in {"1", "true", "yes"} or not development
 
 router = APIRouter(prefix="/v1/control", tags=["control-plane"])
 participant_router = APIRouter(prefix="/v1", tags=["participant-configuration"])
@@ -707,6 +716,7 @@ def create_session_bootstrap(
     body: BootstrapRequest, response: Response,
     repository: Annotated[ControlPlaneRepository, Depends(get_control_repository)],
     origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+    participant_cookie: Annotated[str | None, Cookie(alias=PARTICIPANT_SESSION_COOKIE)] = None,
 ) -> SessionBootstrapResponse:
     """Create a participant session only from a published, origin-authorized Experience."""
     if body.schema_version != "1.0.0":
@@ -718,11 +728,38 @@ def create_session_bootstrap(
     experience = repository.get_experience(experience_id)
     if not experience or experience["status"] != "published" or not experience.get("config_version"):
         raise HTTPException(status_code=409, detail="Experience has no published config version")
-    session_id = str(uuid4())
-    assignments = repository.assign_studies(experience_id, session_id, body.attributes, body.strategy)
+    existing = repository.find_participant_session_by_credential(participant_cookie) if participant_cookie else None
+    if existing is not None and existing["experience_id"] == experience_id:
+        session_id = existing["session_id"]
+        issued_at = existing["issued_at"]
+        expires_at = existing["expires_at"]
+        assignment = repository.get_assignment(session_id)
+        if assignment is None or assignment["experience_id"] != experience_id:
+            raise HTTPException(status_code=503, detail="Participant session state is inconsistent")
+        assignments = assignment["assignments"]
+        participant_credential = None
+    else:
+        session_id = str(uuid4())
+        assignments = repository.assign_studies(experience_id, session_id, body.attributes, body.strategy)
+        participant_credential = None
+        if not assignments:
+            raise HTTPException(status_code=409, detail="No published Studies are eligible for this session")
+        issued_at = datetime.now(UTC)
+        expires_at = issued_at + timedelta(minutes=60)
+        _, participant_credential = repository.create_participant_session(
+            session_id=session_id,
+            experience_id=experience_id,
+            issued_at=issued_at,
+            expires_at=expires_at,
+        )
     if not assignments:
         raise HTTPException(status_code=409, detail="No published Studies are eligible for this session")
-    now = datetime.now(UTC)
+    if participant_credential is not None:
+        response.set_cookie(
+            PARTICIPANT_SESSION_COOKIE, participant_credential,
+            max_age=60 * 60, httponly=True, secure=participant_cookie_secure(),
+            samesite="strict", path="/v1",
+        )
     response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Vary"] = "Origin"
     return SessionBootstrapResponse(
@@ -735,8 +772,8 @@ def create_session_bootstrap(
         privacy_notice_version=os.getenv("PRIVACY_NOTICE_VERSION", "1.0.0"),
         research_consent_version=os.getenv("RESEARCH_CONSENT_VERSION", "1.0.0"),
         camera_capture_supported=body.camera_capture_supported,
-        issued_at=now.isoformat().replace("+00:00", "Z"),
-        expires_at=(now + timedelta(minutes=60)).isoformat().replace("+00:00", "Z"),
+        issued_at=issued_at.isoformat().replace("+00:00", "Z"),
+        expires_at=expires_at.isoformat().replace("+00:00", "Z"),
     )
 
 
