@@ -11,13 +11,13 @@ from jsonschema import Draft202012Validator, FormatChecker
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
 
-from services.analytics.engine import AnalysisError
+from services.analytics.engine import AnalysisError, analyze
 from services.analytics.feature_records import (
     TelemetryFeatureRecordProvider,
     adapt_records,
     to_engine_record,
 )
-from services.analytics.integration import create_analytics_router
+from services.analytics.integration import _frozen_result, create_analytics_router
 from services.analytics.persistence import AnalysisRepository, AnalysisRow
 from services.feature_engine.gaze_pipeline import process_trial_gaze
 from services.gaze_engine.context import TrialObservationContext
@@ -31,7 +31,7 @@ def _load_json(path: str) -> Any:
     return json.loads((ROOT / path).read_text(encoding="utf-8"))
 
 
-def p3_gaze_feature_record() -> dict[str, Any]:
+def p3_gaze_feature_record(*, gaze_available: bool = True) -> dict[str, Any]:
     sample = _load_json("fixtures/gaze/provider-sample-valid.json")
     samples = [
         {
@@ -73,6 +73,7 @@ def p3_gaze_feature_record() -> dict[str, Any]:
         observation_context=context, geometry_snapshots=[geometry], events=[event],
         start_event=start, requested_aoi_id="hero", viewport_width_px=1024,
         viewport_height_px=768,
+        gaze_available=gaze_available,
     )
 
 
@@ -133,6 +134,71 @@ def test_p3_gaze_feature_record_maps_aoi_and_does_not_invent_numeric_quality() -
     assert "quality" not in adapted["features"]["gaze.dwell_time_ms"]
     assert adapted["modality"] == ["gaze", "interaction"]
     assert "gaze.no_samples" not in adapted["missingness"]
+
+
+@pytest.mark.parametrize(
+    ("gaze_available", "expected_modality", "expected_analysis_modality"),
+    [
+        (True, "gaze_and_non_gaze", "gaze_and_non_gaze"),
+        (False, "non_gaze_only", "non_gaze_only"),
+    ],
+)
+def test_real_p3_feature_record_through_engine_analyze_matches_frozen_result(
+    gaze_available: bool,
+    expected_modality: str,
+    expected_analysis_modality: str,
+) -> None:
+    record = p3_gaze_feature_record(gaze_available=gaze_available)
+    feature_schema = _load_json("contracts/schemas/feature-record.v1.schema.json")
+    Draft202012Validator(feature_schema, format_checker=FormatChecker()).validate(record)
+
+    request_payload = request(
+        analysis_request_id=f"p4-engine-{gaze_available}",
+        modality_policy="best_available",
+        analysis_types=["descriptive"],
+        parameters={
+            "features": ["gaze.dwell_time_ms", "interaction.click_count"],
+            "gaze_required": True,
+        },
+    )
+    internal_request = {
+        "request_id": request_payload["analysis_request_id"],
+        "study_id": request_payload["study_id"],
+        "feature_set_version": request_payload["feature_set_version"],
+        "modality_policy": request_payload["modality_policy"],
+        "analysis_types": request_payload["analysis_types"],
+        "parameters": request_payload["parameters"],
+        "feature_records": adapt_records(
+            [record],
+            study_id=request_payload["study_id"],
+            feature_set_version=request_payload["feature_set_version"],
+        ),
+    }
+
+    internal_result = analyze(internal_request)
+    result = _frozen_result(request_payload, internal_result, [record])
+    result_schema = _load_json("contracts/schemas/analysis-result.v1.schema.json")
+    Draft202012Validator(result_schema, format_checker=FormatChecker()).validate(result)
+
+    assert record["modality"] == expected_modality
+    assert result["study_id"] == record["study_id"] == STUDY_ID
+    assert result["feature_set_version"] == record["feature_set_version"] == FEATURE_SET_VERSION
+    assert result["modality"] == expected_analysis_modality
+    assert result["sample_size"] == 1
+    assert result["status"] == "succeeded"
+    assert result["results"]["p4_provenance"]["feature_record_ids"] == [record["feature_record_id"]]
+
+    descriptive = result["results"]["descriptive"]
+    if gaze_available:
+        assert descriptive["gaze.dwell_time_ms"]["mean"] == 200
+        assert "No gaze-only claim is supported" not in result["limitations"]
+    else:
+        gaze_summary = descriptive["gaze.dwell_time_ms"]
+        assert gaze_summary["kind"] == "unavailable"
+        assert gaze_summary["n"] == 0
+        assert "mean" not in gaze_summary
+        assert result["results"]["p4_provenance"]["quality"]["gaze_unavailable_record_n"] == 1
+        assert "No gaze-only claim is supported; gaze-dependent results may be unavailable." in result["limitations"]
 
 
 def test_p3_gaze_pipeline_to_p4_api_is_end_to_end_and_frozen_contract_valid() -> None:
