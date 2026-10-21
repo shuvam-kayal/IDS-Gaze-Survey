@@ -45,9 +45,9 @@ The API image installs only the runtime dependencies. Uvicorn's optional `standa
 Without Docker: create/activate a venv, run `pip install -e ".[dev]"`, `ruff check .`, `pytest`, then `npm install` and `npm run typecheck`.
 
 The integration freeze selects PostgreSQL 16, SQLAlchemy 2.x, psycopg 3 and
-Alembic. After PostgreSQL is running, apply the telemetry migration with
-`alembic upgrade head`; inspect generated SQL without connecting with
-`alembic upgrade head --sql`. The M2a slice provides durable event persistence,
-idempotent ingestion and session lifecycle storage. UI packages are typed
-domain scaffolds, not full web apps. Do not use this setup for real participant
-data.
+Alembic. After PostgreSQL is running, apply all shared control-plane, telemetry,
+geometry, and analytics migrations with `alembic upgrade head`; inspect
+generated SQL without connecting with `alembic upgrade head --sql`. Start the
+participant demo and researcher console separately with their workspace npm
+scripts. The participant survey currently retains answers in page memory, and
+analytics jobs run in-process. Do not use this setup for real participant data.

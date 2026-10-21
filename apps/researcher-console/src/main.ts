@@ -2,6 +2,7 @@ import "./style.css";
 import { mountExperienceRegistry } from "./features/experiences/screen.js";
 import { mountStudyAuthoring } from "./features/studies/screen.js";
 import { ResearcherApi } from "./features/experiences/api.js";
+import { mountAnalyticsScreen } from "./features/analytics/screen.js";
 
 const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("Researcher console root is missing");
@@ -24,14 +25,7 @@ function show(view: "experiences" | "studies" | "analytics") {
   panel.setAttribute("aria-busy", "false");
   if (view === "experiences") destroyCurrent = mountExperienceRegistry(panel, api).destroy;
   else if (view === "studies") destroyCurrent = mountStudyAuthoring(panel, api).destroy;
-  else {
-    const section = document.createElement("section");
-    section.setAttribute("aria-labelledby", "analytics-title");
-    const heading = document.createElement("h1"); heading.id = "analytics-title"; heading.textContent = "Study analytics";
-    const note = document.createElement("p"); note.textContent = "Analysis requests and result interpretation are provided by the P4 analytics module. This console exposes the result-state integration point and does not calculate or reinterpret study results.";
-    const contract = document.createElement("code"); contract.textContent = "ResultState · ResultSummary · canShowInterpretation";
-    section.append(heading, note, contract); panel.replaceChildren(section);
-  }
+  else destroyCurrent = mountAnalyticsScreen(panel, api).destroy;
 }
 
 app.replaceChildren();

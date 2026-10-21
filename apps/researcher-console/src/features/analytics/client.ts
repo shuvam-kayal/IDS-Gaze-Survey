@@ -46,7 +46,7 @@ export function createAnalyticsClient(baseUrl = "/v1/analytics", fetcher: Fetche
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetcher(`${baseUrl}${path}`, {
       ...init,
-      credentials: "same-origin",
+      credentials: "include",
       headers: { Accept: "application/json", ...init?.headers },
     });
     if (!response.ok) {
@@ -63,6 +63,10 @@ export function createAnalyticsClient(baseUrl = "/v1/analytics", fetcher: Fetche
     },
     listModels() {
       return request<ModelRegistry>("/models");
+    },
+    listFeatureSets(studyId: string) {
+      const query = new URLSearchParams({ study_id: studyId });
+      return request<{ study_id: string; feature_set_versions: string[] }>(`/feature-sets?${query}`);
     },
     startJob(payload: AnalysisRequestV1) {
       return request<AnalysisResultV1>("/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });

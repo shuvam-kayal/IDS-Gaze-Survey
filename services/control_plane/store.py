@@ -370,6 +370,33 @@ class ControlPlaneRepository:
             return ({"session_id": row.session_id, "experience_id": row.experience_id,
                      "assignments": row.assigned_studies, "assigned_at": row.assigned_at} if row else None)
 
+    def list_consented_session_ids_for_study(self, study_id: str) -> list[str]:
+        """Return only non-withdrawn sessions with recorded research consent.
+
+        Assignment JSON is versioned and small; filtering it in Python keeps
+        the lookup portable across the SQLite test adapter and PostgreSQL.
+        """
+        with self.sessions() as db:
+            assignments = db.scalars(select(StudyAssignmentRecord)).all()
+            candidates = {
+                row.session_id
+                for row in assignments
+                if any(item.get("study_id") == study_id for item in row.assigned_studies)
+            }
+            if not candidates:
+                return []
+            sessions = db.scalars(select(ParticipantSessionRecord).where(
+                ParticipantSessionRecord.session_id.in_(candidates),
+                ParticipantSessionRecord.status != "withdrawn",
+            )).all()
+            live = {row.session_id for row in sessions}
+            consents = db.scalars(select(ParticipantConsentRecord).where(
+                ParticipantConsentRecord.session_id.in_(live),
+                ParticipantConsentRecord.scope == "research_participation",
+                ParticipantConsentRecord.decision == "accepted",
+            )).all() if live else []
+            return sorted({row.session_id for row in consents})
+
     @staticmethod
     def _session_dict(row: ParticipantSessionRecord) -> dict[str, Any]:
         return {

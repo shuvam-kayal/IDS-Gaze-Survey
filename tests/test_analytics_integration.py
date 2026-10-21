@@ -557,24 +557,12 @@ def test_heatmap_geometry_version_cannot_drift_from_p3_aoi_version() -> None:
         )
 
 
-def test_shared_api_shell_can_mount_p4_router_without_replacing_p3_health_route() -> None:
+def test_shared_api_shell_mounts_p4_router_without_replacing_p3_health_route() -> None:
     from services.api.app import app as shared_app
-
-    repository = MemoryRepository()
-
-    class EmptyP3FeatureRecordStore:
-        def get_for_analysis(self, *, study_id: str, feature_set_version: str) -> list[dict[str, Any]]:
-            return []
-
-    shared_app.include_router(create_analytics_router(
-        get_feature_provider=lambda: EmptyP3FeatureRecordStore(),
-        get_repository=lambda: repository,
-        get_study_authorizer=lambda: lambda _study_id: True,
-    ))
     client = TestClient(shared_app)
     assert client.get("/health").status_code == 200
     assert client.get("/v1/analytics/models").status_code == 200
-    assert client.post("/v1/analytics/analyze", json=request()).status_code == 200
+    assert client.post("/v1/analytics/analyze", json=request()).status_code == 401
 
 
 def test_canonical_feature_record_rejects_noncanonical_spatial_field() -> None:

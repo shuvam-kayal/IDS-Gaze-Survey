@@ -81,6 +81,16 @@ class TelemetryFeatureRecordProvider:
                 records_by_id[record_id] = record
         return [records_by_id[key] for key in sorted(records_by_id)]
 
+    def get_available_feature_set_versions(self, *, study_id: str) -> list[str]:
+        """Discover server-produced feature versions within authorized sessions."""
+        session_ids = self._session_ids_for_study(study_id)
+        versions: set[str] = set()
+        for session_id in sorted(set(session_ids)):
+            for record in self._repository.list_feature_records(session_id, study_id=study_id):
+                if record.get("study_id") == study_id and isinstance(record.get("feature_set_version"), str):
+                    versions.add(record["feature_set_version"])
+        return sorted(versions)
+
 
 def _is_gaze_feature(name: str, metric: Mapping[str, Any]) -> bool:
     modality = metric.get("modality")

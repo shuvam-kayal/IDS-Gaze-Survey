@@ -91,6 +91,7 @@ def test_unknown_version_rejected():
 def test_events_cors_configuration_allows_event_queue_idempotency_header(monkeypatch):
     """Verify the app's real CORSMiddleware is configured for EventQueue preflight."""
     monkeypatch.setenv("CORS_ORIGINS", "http://localhost:5173")
+    monkeypatch.delenv("CONTROL_PLANE_CORS_ORIGINS", raising=False)
     import importlib
 
     importlib.reload(api)

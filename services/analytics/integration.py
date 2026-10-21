@@ -169,6 +169,7 @@ def create_analytics_router(
     get_feature_provider: Callable[..., FeatureRecordProvider],
     get_repository: Callable[..., AnalysisRepository],
     get_study_authorizer: Callable[..., Callable[[str], bool]],
+    get_export_authorizer: Callable[..., Callable[[str], bool]] | None = None,
     get_heatmap_provider: Callable[..., HeatmapInputProvider | None] | None = None,
 ) -> APIRouter:
     """Create a router for inclusion in services/api/app.py after owner review."""
@@ -177,6 +178,19 @@ def create_analytics_router(
     @router.get("/models")
     def list_models() -> dict[str, Any]:
         return {"registry_version": "p4-model-registry/1.0.0", "models": MODEL_REGISTRY}
+
+    @router.get("/feature-sets")
+    def list_feature_sets(
+        study_id: str = Query(..., min_length=1),
+        provider: FeatureRecordProvider = Depends(get_feature_provider),  # noqa: B008
+        authorize: Callable[[str], bool] = Depends(get_study_authorizer),  # noqa: B008
+    ) -> dict[str, Any]:
+        if not authorize(study_id):
+            raise HTTPException(status_code=403, detail="Study access is not authorized")
+        discover = getattr(provider, "get_available_feature_set_versions", None)
+        if not callable(discover):
+            raise HTTPException(status_code=503, detail="Feature version discovery is unavailable")
+        return {"study_id": study_id, "feature_set_versions": discover(study_id=study_id)}
 
     def calculate(
         request: dict[str, Any], provider: FeatureRecordProvider,
@@ -333,7 +347,7 @@ def create_analytics_router(
     def export_csv(
         analysis_id: str,
         repository: AnalysisRepository = Depends(get_repository),  # noqa: B008
-        authorize: Callable[[str], bool] = Depends(get_study_authorizer),  # noqa: B008
+        authorize: Callable[[str], bool] = Depends(get_export_authorizer or get_study_authorizer),  # noqa: B008
     ) -> Response:
         result = repository.get(analysis_id)
         if result is None:

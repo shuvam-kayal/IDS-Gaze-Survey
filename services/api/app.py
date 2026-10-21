@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from services.control_plane.participant_auth import require_participant_session
+from services.control_plane.auth import Permission, Principal, require_permission
 from services.control_plane.router import (
     PARTICIPANT_SESSION_COOKIE,
     _validate_participant_origin,
@@ -26,6 +27,9 @@ from services.telemetry.persistence import (
     RecordIdentityConflict,
     TelemetryRepository,
 )
+from services.analytics.feature_records import TelemetryFeatureRecordProvider
+from services.analytics.integration import create_analytics_router
+from services.analytics.persistence import AnalysisRepository
 
 app = FastAPI(
     title="Attention Analytics API",
@@ -52,6 +56,40 @@ if _cors_origins:
 
 app.include_router(control_plane_router)
 app.include_router(participant_router)
+
+
+def get_analytics_repository() -> AnalysisRepository:
+    return AnalysisRepository()
+
+
+def get_analytics_feature_provider() -> TelemetryFeatureRecordProvider:
+    control_repository = get_control_repository()
+    return TelemetryFeatureRecordProvider(
+        get_repository(),
+        session_ids_for_study=control_repository.list_consented_session_ids_for_study,
+    )
+
+
+def get_analytics_study_authorizer(
+    _principal: Annotated[Principal, Depends(require_permission(Permission.VIEW_STUDIES))],
+) -> object:
+    control_repository = get_control_repository()
+    return lambda study_id: control_repository.get_study(study_id) is not None
+
+
+def get_analytics_export_authorizer(
+    _principal: Annotated[Principal, Depends(require_permission(Permission.EXPORT_RESULTS))],
+) -> object:
+    control_repository = get_control_repository()
+    return lambda study_id: control_repository.get_study(study_id) is not None
+
+
+app.include_router(create_analytics_router(
+    get_feature_provider=get_analytics_feature_provider,
+    get_repository=get_analytics_repository,
+    get_study_authorizer=get_analytics_study_authorizer,
+    get_export_authorizer=get_analytics_export_authorizer,
+))
 
 
 class HealthResponse(BaseModel):

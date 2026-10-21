@@ -1,6 +1,6 @@
 # Webcam-Assisted Digital Survey and Attention Analytics Platform
 
-A research platform intended to combine survey responses, browser interaction telemetry and optional webcam-derived gaze signals to study user attention. This repository currently contains the **contract-first starter scaffold**, not a finished or production-ready product.
+A research platform intended to combine survey responses, browser interaction telemetry and optional webcam-derived gaze signals to study user attention. The repository now includes participant and researcher browser apps, a versioned PostgreSQL control plane and telemetry API, the P3 gaze/feature pipeline, and P4 analytics endpoints. It remains a local development implementation and is not ready for real participant data.
 
 ## First-time setup
 
@@ -52,7 +52,7 @@ The cross-workstream integration decisions are frozen in [the integration freeze
 
 ## Current limitations
 
-The minimal API has a health route and a shape-validating event endpoint. **Events are not persisted.** Authentication, database migrations, real session/config APIs, camera capture, gaze-provider integration, feature computation, models and dashboards are not implemented yet. TypeScript packages are domain/interface scaffolds rather than full web applications. Do not use this repository to collect real participant data.
+The API persists events, participant consent, gaze/feature records, and analysis results in PostgreSQL. Researcher authentication is environment-provisioned through `CONTROL_PLANE_USERS_JSON` and `CONTROL_PLANE_SECRET`; set both before using the researcher console. Run `alembic upgrade head` after starting PostgreSQL. The participant survey currently keeps answers in page memory because no server survey-response endpoint is defined. Analytics jobs use in-process FastAPI background tasks and need a durable worker before multi-process deployment. Browser tests that require Chromium need a Playwright browser installation. These are development integrations; do not collect real participant data until deployment security, privacy, retention, and operational review is complete.
 
 ## Safety and research quality
 
