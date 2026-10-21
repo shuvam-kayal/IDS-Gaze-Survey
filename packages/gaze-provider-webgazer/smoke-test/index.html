@@ -10,7 +10,24 @@
       .panel { border: 1px solid #bbb; border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
       button { margin: .5rem .5rem .5rem 0; padding: .5rem .8rem; }
       #status { font-weight: 600; }
-      #calibration-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+      #smoke-controls { position: relative; }
+      /* Keep lifecycle actions above calibration targets so Stop is always
+         available. Diagnostic output remains below the target layer. */
+      #capture-controls { position: relative; z-index: 3000; }
+      #diagnostic-controls { position: relative; z-index: 1000; }
+      /* WebGazer 3.5.3 creates these IDs from src/params.mjs. Keep its
+         preview in a non-interactive dock below/right of the controls. */
+      #webgazerVideoContainer { top: auto !important; left: auto !important; right: 1rem !important; bottom: 1rem !important; width: 240px !important; height: 180px !important; z-index: 5 !important; pointer-events: none !important; }
+      #webgazerVideoContainer *, #webgazerGazeDot { pointer-events: none !important; }
+
+@media (max-width: 700px), (max-height: 520px) {
+  /* Keep the controls usable on small viewports. Processing continues; only
+     the optional visual preview is hidden when there is no safe dock area. */
+  #webgazerVideoContainer { display: none !important; }
+  body { margin: 1rem; }
+  #preview-note { font-size: .9rem; }
+}
+      #calibration-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2000; }
       .calibration-target { position: absolute; width: 2.4rem; height: 2.4rem; border: 3px solid #1459c7; border-radius: 50%; background: #fff; color: #1459c7; cursor: pointer; pointer-events: auto; transform: translate(-50%, -50%); box-shadow: 0 0 0 3px rgba(255,255,255,.8); }
       #callback-marker { position: fixed; width: 1rem; height: 1rem; border: 2px solid #159447; border-radius: 50%; background: rgba(21,148,71,.45); pointer-events: none; transform: translate(-50%, -50%); z-index: 20; display: none; }
       .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .9rem; }
@@ -22,7 +39,8 @@
   <body>
     <h1>P3 WebGazer provider smoke test</h1>
     <p><strong>Provider-only manual test.</strong> This page is not the P1 participant runtime, does not submit data, and does not persist or upload video, frames, or participant data.</p>
-    <section class="panel">
+    <main id="smoke-controls">
+    <section class="panel" id="capture-controls">
       <label><input id="consent" type="checkbox"> I explicitly authorize this local smoke test to request webcam access.</label>
       <div>
         <button id="start" type="button" disabled>Start capture</button>
@@ -33,20 +51,22 @@
       <p>Calibration: <span id="calibration-status">not started</span></p>
       <p>Viewport: <code id="viewport"></code></p>
       <p>Temporary sample count: <code id="count">0</code></p>
+    </section>
+    <section class="panel" id="diagnostic-controls">
+      <h2>Live diagnostics</h2>
       <pre id="prediction">No prediction received yet.</pre>
       <div class="legend" aria-label="Diagnostic marker legend">
         <span><span class="swatch target-swatch"></span>calibration target</span>
         <span><span class="swatch callback-swatch"></span>callback prediction marker</span>
         <span>browser mouse cursor remains separate</span>
       </div>
-    </section>
-    <section class="panel">
-      <h2>Live diagnostics</h2>
       <p>Listener callbacks: <code id="callback-count">0</code> · Null predictions: <code id="null-count">0</code> · Finite predictions: <code id="finite-count">0</code> · Invalid/out-of-viewport: <code id="invalid-count">0</code></p>
       <p>Latest finite callback: <code id="latest-finite">none</code> · Time since finite: <code id="since-finite">n/a</code></p>
       <p>Mouse stationary for 1 second: <code id="mouse-stationary">unknown</code></p>
     </section>
     <p>Procedure completion is not evidence of calibration accuracy. Confidence remains null and the existing P3 quality rules apply. The green marker is driven only by finite callback coordinates; it is not the browser cursor.</p>
+    </main>
+    <p id="preview-note">The WebGazer diagnostic preview is docked at the lower right and is non-interactive; controls remain in the control region above it.</p>
     <div id="calibration-layer" aria-live="polite"></div>
     <div id="callback-marker" aria-hidden="true"></div>
     <script type="module" src="./app.js"></script>

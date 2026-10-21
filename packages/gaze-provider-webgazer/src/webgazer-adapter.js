@@ -36,8 +36,8 @@ function providerReason(error) {
     : "gaze.provider_failure";
 }
 
-function externalStreamUnsupported() {
-  return new Error("gaze.external_stream_unsupported");
+function unsupportedExternalStreamInput() {
+  return new Error("camera_stream is not accepted; WebGazer owns camera acquisition");
 }
 
 /**
@@ -72,24 +72,14 @@ export class WebGazerAdapter {
     if (typeof input.on_sample !== "function" || typeof input.on_status !== "function") {
       throw new Error("on_sample and on_status callbacks are required");
     }
-    const testOnly = input.test_only === true;
-    if (testOnly) {
-      if (input.consent_granted !== true) {
-        throw new Error("test-only WebGazer start requires explicit consent_granted=true");
-      }
-    } else {
-      if (!input.camera_stream || typeof input.camera_stream.getTracks !== "function") {
-        throw new Error("ProviderAdapter input requires a consented camera_stream");
-      }
-      if (!input.initial_geometry || typeof input.initial_geometry !== "object") {
-        throw new Error("ProviderAdapter input requires initial_geometry");
-      }
-      // WebGazer 3.5.3 has no public API for supplying this stream. Do not
-      // call begin(), which would request a second camera stream, and do not
-      // call stop() on the P1-owned stream.
-      safeStatus(input.on_status, STATUS.INITIALIZING);
-      safeStatus(input.on_status, STATUS.UNAVAILABLE, "gaze.external_stream_unsupported");
-      throw externalStreamUnsupported();
+    if (input.consent_granted !== true) {
+      throw new Error("WebGazer start requires explicit consent_granted=true");
+    }
+    if (!input.initial_geometry || typeof input.initial_geometry !== "object") {
+      throw new Error("ProviderAdapter input requires initial_geometry");
+    }
+    if (Object.prototype.hasOwnProperty.call(input, "camera_stream")) {
+      throw unsupportedExternalStreamInput();
     }
     if (this.active) {
       if (this.sessionId !== input.session_id) {
@@ -185,6 +175,10 @@ export class WebGazerAdapter {
   cleanupApi() {
     try {
       if (typeof this.api.clearGazeListener === "function") this.api.clearGazeListener();
+      // WebGazer.end() intentionally leaves the camera track running. The
+      // provider owns the stream acquired by begin(), so stop it before end()
+      // removes the DOM nodes needed by WebGazer.stopVideo().
+      if (typeof this.api.stopVideo === "function") this.api.stopVideo();
       if (typeof this.api.end === "function") {
         const result = this.api.end();
         if (result && typeof result.catch === "function") result.catch(() => {});

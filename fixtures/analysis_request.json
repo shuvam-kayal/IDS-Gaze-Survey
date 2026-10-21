@@ -1,0 +1,9 @@
+{
+  "request_id": "fixture-descriptive-v1",
+  "study_id": "study-demo-001",
+  "feature_set_version": "1.0.0",
+  "modality_policy": "non_gaze_only",
+  "analysis_types": ["descriptive", "report"],
+  "parameters": {"features": ["response_time_ms", "completion", "condition"], "seed": 17},
+  "feature_records": []
+}

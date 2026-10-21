@@ -159,8 +159,20 @@ async function startCapture() {
     }
     await adapter.start({
       session_id: "manual-webgazer-smoke-session",
-      test_only: true,
       consent_granted: true,
+      initial_geometry: {
+        schema_version: "1.0.0",
+        snapshot_id: "manual-webgazer-smoke-geometry",
+        session_id: "manual-webgazer-smoke-session",
+        captured_at: new Date().toISOString(),
+        aoi_set_version: "manual-smoke",
+        viewport_width_px: window.innerWidth,
+        viewport_height_px: window.innerHeight,
+        scroll_x_px: window.scrollX,
+        scroll_y_px: window.scrollY,
+        zoom: window.devicePixelRatio || 1,
+        rectangles: [],
+      },
       on_sample: displaySample,
       on_status: (value, reason) => {
         if (value === "initializing") setStatus("camera initializing");
@@ -194,9 +206,14 @@ function stopCapture() {
   restartCalibrationButton.disabled = true;
 }
 
-consent.addEventListener("change", () => {
+function updateStartButton() {
   startButton.disabled = !consent.checked || Boolean(adapter);
-});
+}
+
+// Listen to both events so keyboard, label, and browser-native checkbox
+// interactions all update the control immediately before any camera request.
+consent.addEventListener("input", updateStartButton);
+consent.addEventListener("change", updateStartButton);
 startButton.addEventListener("click", startCapture);
 stopButton.addEventListener("click", stopCapture);
 restartCalibrationButton.addEventListener("click", restartCalibration);
@@ -209,4 +226,5 @@ window.addEventListener("beforeunload", stopCapture);
 window.setInterval(updateDiagnosticPanel, 250);
 updateViewport();
 resetDiagnostics();
+updateStartButton();
 setStatus("idle", "provider-only smoke test; no P1 integration");
