@@ -5,6 +5,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from services.telemetry.persistence import Base
+from services.control_plane import store as _control_plane_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

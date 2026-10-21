@@ -6,6 +6,11 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import OperationalError
 
+from services.gaze_engine.lifecycle import (
+    END_EVENT_TYPE,
+    START_EVENT_TYPE,
+    resolve_authorized_trial_lifecycle,
+)
 from services.telemetry.persistence import (
     FeatureRecordRow,
     GazeObservationAssociationRow,
@@ -16,13 +21,7 @@ from services.telemetry.persistence import (
     TelemetryRepository,
 )
 
-DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    os.environ.get(
-        "DATABASE_URL",
-        "postgresql+psycopg://attention:attention@localhost:5432/attention?connect_timeout=5",
-    ),
-)
+DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 
 
 def event(session_id: str, event_id: str, occurred_at: str, **changes: object) -> dict:
@@ -90,6 +89,9 @@ def feature_record(session_id: str, feature_record_id: str, *, modality: str = "
 
 @pytest.fixture(scope="module")
 def repository():
+    pytest.importorskip("psycopg", reason="PostgreSQL integration tests require psycopg 3")
+    if not DATABASE_URL:
+        pytest.skip("TEST_DATABASE_URL is required; refusing to use DATABASE_URL or the development database")
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
     try:
         with engine.connect() as connection:
@@ -140,6 +142,41 @@ def test_retrieval_orders_by_occurred_ingested_then_event_id(repository):
         "evt-early",
         "evt-late",
     ]
+
+
+def test_persisted_trial_lifecycle_survives_repository_reload(repository):
+    session_id = f"session-lifecycle-{uuid4()}"
+    start = event(session_id, "start-1", "2026-01-01T10:00:00Z",
+                  event_type=START_EVENT_TYPE, payload={"trial_id": "trial-a"})
+    end = event(session_id, "end-1", "2026-01-01T10:00:10Z",
+                event_type=END_EVENT_TYPE, payload={"trial_id": "trial-a"})
+    repository.ingest(start)
+    repository.ingest(end)
+    context, reason = resolve_authorized_trial_lifecycle(
+        repository,
+        participant_session={
+            "session_id": session_id,
+            "experience_id": "exp-test",
+            "status": "open",
+            "expires_at": "2026-01-02T00:00:00Z",
+        },
+        study_assignment={
+            "session_id": session_id,
+            "experience_id": "exp-test",
+            "assignments": [{
+                "study_id": "study-test",
+                "study_config": {"aoi_set_version": "aoi-test"},
+            }],
+        },
+        study_id="study-test",
+        trial_id="trial-a",
+        aoi_set_version="aoi-test",
+        now=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+    )
+    assert reason is None
+    assert context is not None
+    assert context.window_start == "2026-01-01T10:00:00Z"
+    assert context.window_end == "2026-01-01T10:00:10Z"
 
 
 def test_session_lifecycle_and_idempotent_deletion(repository):

@@ -5,6 +5,12 @@ services:
       APP_ENV: development
       DATABASE_URL: postgresql+psycopg://attention:attention@db:5432/attention
       CORS_ORIGINS: http://localhost:5173
+      CONTROL_PLANE_CORS_ORIGINS: http://localhost:5174,http://localhost:5173
+      CONTROL_PLANE_SECRET: ${CONTROL_PLANE_SECRET:-}
+      CONTROL_PLANE_USERS_JSON: ${CONTROL_PLANE_USERS_JSON:-}
+      CONTROL_PLANE_COOKIE_SECURE: ${CONTROL_PLANE_COOKIE_SECURE:-false}
+      PRIVACY_NOTICE_VERSION: ${PRIVACY_NOTICE_VERSION:-1.0.0}
+      RESEARCH_CONSENT_VERSION: ${RESEARCH_CONSENT_VERSION:-1.0.0}
     ports: ["8000:8000"]
     depends_on:
       db: {condition: service_healthy}

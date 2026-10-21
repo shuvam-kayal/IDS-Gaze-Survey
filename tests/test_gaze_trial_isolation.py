@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -8,7 +8,12 @@ from services.feature_engine.gaze_metrics import compute_gaze_metrics
 from services.gaze_engine.adapter import GazeNormalizationError
 from services.gaze_engine.context import TrialObservationContext, validate_observation_association
 from services.gaze_engine.fixation import AOIAssignment, Fixation, map_gaze_to_aois
-from services.gaze_engine.lifecycle import END_EVENT_TYPE, START_EVENT_TYPE, resolve_trial_lifecycle
+from services.gaze_engine.lifecycle import (
+    END_EVENT_TYPE,
+    START_EVENT_TYPE,
+    resolve_authorized_trial_lifecycle,
+    resolve_trial_lifecycle,
+)
 
 
 def _event(event_type: str, event_id: str, occurred_at: str, trial_id: str = "trial-a") -> dict:
@@ -169,3 +174,139 @@ def test_v2_mapping_rejects_ambiguous_context():
     }
     with pytest.raises(GazeNormalizationError, match="required"):
         map_gaze_to_aois([], [snapshot])
+
+
+class _EventRepository:
+    def __init__(self, events):
+        self.events = events
+
+    def list_events(self, session_id, *, study_id=None):
+        return [
+            event for event in self.events
+            if event["session_id"] == session_id
+            and (study_id is None or study_id in event["study_ids"])
+        ]
+
+
+def _verified_session(*, status="open", expires_at="2026-01-01T11:00:00Z"):
+    return {
+        "session_id": "session-1",
+        "experience_id": "exp-1",
+        "status": status,
+        "expires_at": expires_at,
+    }
+
+
+def _assignment(*, study_id="study-a", aoi_set_version="aoi-a"):
+    return {
+        "session_id": "session-1",
+        "experience_id": "exp-1",
+        "assignments": [{
+            "study_id": study_id,
+            "config_version": "cfg-a",
+            "study_config": {"aoi_set_version": aoi_set_version},
+        }],
+    }
+
+
+def test_authorized_lifecycle_uses_verified_assignment_and_persisted_events():
+    repository = _EventRepository([
+        _event(START_EVENT_TYPE, "start-1", "2026-01-01T10:00:00Z"),
+        _event(END_EVENT_TYPE, "end-1", "2026-01-01T10:00:10Z"),
+    ])
+    context, reason = resolve_authorized_trial_lifecycle(
+        repository,
+        participant_session=_verified_session(),
+        study_assignment=_assignment(),
+        study_id="study-a",
+        trial_id="trial-a",
+        aoi_set_version="aoi-a",
+        now=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+    )
+    assert reason is None
+    assert context == _context()
+
+
+def test_authorized_lifecycle_isolates_requested_trial_from_other_trials_in_session():
+    repository = _EventRepository([
+        _event(START_EVENT_TYPE, "start-old", "2026-01-01T09:00:00Z", "trial-old"),
+        _event(END_EVENT_TYPE, "end-old", "2026-01-01T09:00:10Z", "trial-old"),
+        _event(START_EVENT_TYPE, "start-current", "2026-01-01T10:00:00Z", "trial-a"),
+        _event(END_EVENT_TYPE, "end-current", "2026-01-01T10:00:10Z", "trial-a"),
+    ])
+    context, reason = resolve_authorized_trial_lifecycle(
+        repository,
+        participant_session=_verified_session(),
+        study_assignment=_assignment(),
+        study_id="study-a",
+        trial_id="trial-a",
+        aoi_set_version="aoi-a",
+        now=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+    )
+    assert reason is None
+    assert context == _context()
+
+
+def test_authorized_lifecycle_rejects_untrusted_or_ambiguous_scope():
+    repository = _EventRepository([
+        _event(START_EVENT_TYPE, "start-1", "2026-01-01T10:00:00Z"),
+        _event(END_EVENT_TYPE, "end-1", "2026-01-01T10:00:10Z"),
+    ])
+    with pytest.raises(GazeNormalizationError, match="not open"):
+        resolve_authorized_trial_lifecycle(
+            repository,
+            participant_session=_verified_session(status="withdrawn"),
+            study_assignment=_assignment(), study_id="study-a", trial_id="trial-a",
+            aoi_set_version="aoi-a", now=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+        )
+    with pytest.raises(GazeNormalizationError, match="pinned"):
+        resolve_authorized_trial_lifecycle(
+            repository,
+            participant_session=_verified_session(), study_assignment=_assignment(),
+            study_id="study-a", trial_id="trial-a", aoi_set_version="aoi-other",
+            now=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+        )
+    with pytest.raises(GazeNormalizationError, match="not unambiguously assigned"):
+        resolve_authorized_trial_lifecycle(
+            repository,
+            participant_session=_verified_session(), study_assignment=_assignment(study_id="study-b"),
+            study_id="study-a", trial_id="trial-a", aoi_set_version="aoi-a",
+            now=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+        )
+
+
+def test_authorized_lifecycle_rejects_expired_session_and_wrong_experience_event():
+    repository = _EventRepository([
+        _event(START_EVENT_TYPE, "start-1", "2026-01-01T10:00:00Z"),
+        _event(END_EVENT_TYPE, "end-1", "2026-01-01T10:00:10Z"),
+    ])
+    with pytest.raises(GazeNormalizationError, match="expired"):
+        resolve_authorized_trial_lifecycle(
+            repository,
+            participant_session=_verified_session(expires_at="2026-01-01T10:30:00Z"),
+            study_assignment=_assignment(), study_id="study-a", trial_id="trial-a",
+            aoi_set_version="aoi-a", now=datetime(2026, 1, 1, 10, 30, tzinfo=UTC),
+        )
+    wrong_experience = _event(START_EVENT_TYPE, "start-2", "2026-01-01T10:00:00Z")
+    wrong_experience["experience_id"] = "exp-other"
+    with pytest.raises(GazeNormalizationError, match="Experience"):
+        resolve_trial_lifecycle(
+            [wrong_experience],
+            [_event(END_EVENT_TYPE, "end-1", "2026-01-01T10:00:10Z")],
+            session_id="session-1", study_id="study-a", aoi_set_version="aoi-a",
+            trial_id="trial-a", experience_id="exp-1",
+        )
+
+
+def test_late_event_does_not_rewrite_or_extend_a_closed_window():
+    starts = [_event(START_EVENT_TYPE, "start-1", "2026-01-01T10:00:00Z")]
+    ends = [_event(END_EVENT_TYPE, "end-1", "2026-01-01T10:00:10Z")]
+    context, reason = resolve_trial_lifecycle(
+        starts, ends, session_id="session-1", study_id="study-a", aoi_set_version="aoi-a", trial_id="trial-a"
+    )
+    assert reason is None and context == _context()
+    late_end = _event(END_EVENT_TYPE, "end-late", "2026-01-01T10:00:20Z")
+    context, reason = resolve_trial_lifecycle(
+        starts, ends + [late_end], session_id="session-1", study_id="study-a", aoi_set_version="aoi-a", trial_id="trial-a"
+    )
+    assert context is None and reason == "gaze.observation_boundary_ambiguous"

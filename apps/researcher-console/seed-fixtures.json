@@ -1,0 +1,26 @@
+{
+  "experience": {
+    "name": "Local product research demo",
+    "allowed_origins": ["http://localhost:5173"]
+  },
+  "studies": [
+    {
+      "name": "Product presentation",
+      "priority": 20,
+      "eligibility_rules": {"all": []},
+      "timing_rules": {"exposure_duration_ms": 12000, "survey_timing": "after_exposure"},
+      "survey_policy": {"timing": "after_exposure", "consolidation": "deduplicate_by_question_id"},
+      "aois": [{"aoi_id": "product-card", "name": "Product card", "selector": "[data-aoi='product-card']", "tracking_strategy": "data_attribute", "priority": 10, "enabled": true}],
+      "questions": [{"question_id": "product-interest", "prompt": "How interested are you in this product?", "version": "1.0.0", "type": "scale", "required": true, "min": 1, "max": 5}]
+    },
+    {
+      "name": "Purchase intent",
+      "priority": 10,
+      "eligibility_rules": {"all": []},
+      "timing_rules": {"exposure_duration_ms": 12000, "survey_timing": "after_exposure"},
+      "survey_policy": {"timing": "after_exposure", "consolidation": "deduplicate_by_question_id"},
+      "aois": [{"aoi_id": "purchase-button", "name": "Purchase button", "selector": "[data-aoi='purchase-button']", "tracking_strategy": "data_attribute", "priority": 20, "enabled": true}],
+      "questions": [{"question_id": "purchase-likelihood", "prompt": "How likely are you to purchase?", "version": "1.0.0", "type": "single_choice", "required": true, "choices": ["Very likely", "Somewhat likely", "Unlikely"]}]
+    }
+  ]
+}

@@ -86,3 +86,20 @@ def test_unknown_version_rejected():
     }
     with pytest.raises(ValidationError):
         api.EventEnvelope.model_validate(e)
+
+
+def test_events_cors_configuration_allows_event_queue_idempotency_header(monkeypatch):
+    """Verify the app's real CORSMiddleware is configured for EventQueue preflight."""
+    monkeypatch.setenv("CORS_ORIGINS", "http://localhost:5173")
+    import importlib
+
+    importlib.reload(api)
+    cors = next(
+        middleware
+        for middleware in api.app.user_middleware
+        if middleware.cls.__name__ == "CORSMiddleware"
+    )
+    assert cors.kwargs["allow_origins"] == ["http://localhost:5173"]
+    assert "POST" in cors.kwargs["allow_methods"]
+    allowed_headers = {header.lower() for header in cors.kwargs["allow_headers"]}
+    assert {"content-type", "idempotency-key"}.issubset(allowed_headers)

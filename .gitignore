@@ -11,3 +11,4 @@ dist/
 data/local/
 *.sqlite3
 .DS_Store
+*.egg-info/

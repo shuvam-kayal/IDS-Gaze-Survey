@@ -1,10 +1,26 @@
-from fastapi import FastAPI
+import os
+from typing import Annotated
+
+from fastapi import Cookie, Depends, FastAPI, Header, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from services.control_plane.participant_auth import require_participant_session
+from services.control_plane.router import (
+    PARTICIPANT_SESSION_COOKIE,
+    _validate_participant_origin,
+    get_control_repository,
+    participant_router,
+)
+from services.control_plane.router import (
+    router as control_plane_router,
+)
+from services.control_plane.store import ControlPlaneRepository
 from services.feature_engine.authorized_gaze import process_authorized_gaze
 from services.feature_engine.context_provider import TrustedContextUnavailable
+from services.feature_engine.trusted_context import TrustedGazeContextProvider
 from services.telemetry.persistence import (
     IdentityConflict,
     RecordIdentityConflict,
@@ -16,6 +32,26 @@ app = FastAPI(
     version="0.1.0",
     description="Contract-first scaffold; not production-ready.",
 )
+
+_cors_origins = sorted(
+    {
+        origin.strip()
+        for setting in (os.getenv("CORS_ORIGINS", ""), os.getenv("CONTROL_PLANE_CORS_ORIGINS", ""))
+        for origin in setting.split(",")
+        if origin.strip()
+    }
+)
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Accept", "Content-Type", "Idempotency-Key", "X-CSRF-Token"],
+    )
+
+app.include_router(control_plane_router)
+app.include_router(participant_router)
 
 
 class HealthResponse(BaseModel):
@@ -41,6 +77,17 @@ class GazeObservationRequest(BaseModel):
     schema_version: str = Field(pattern=r"^1\.0\.0$")
     request_id: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
+    provider_samples: list[dict] = Field(max_length=250)
+
+
+class AuthorizedGazeObservationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = Field(pattern=r"^1\.1\.0$")
+    request_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    study_id: str = Field(min_length=1)
+    trial_id: str = Field(min_length=1)
     provider_samples: list[dict] = Field(max_length=250)
 
 
@@ -80,16 +127,17 @@ def health() -> HealthResponse:
 
 @app.exception_handler(RequestValidationError)
 async def request_validation_error_handler(request, exc: RequestValidationError) -> JSONResponse:
-    code = (
-        "invalid_gaze_observation"
-        if request.url.path == "/v1/gaze/observations"
-        else "invalid_event"
-    )
+    if request.url.path in {"/v1/gaze/observations", "/v1/gaze/observations/authorized"}:
+        error_code = "invalid_gaze_observation"
+    elif request.url.path == "/v1/events":
+        error_code = "invalid_event"
+    else:
+        error_code = "invalid_request"
     return JSONResponse(
         status_code=422,
         content={
             "schema_version": "1.0.0",
-            "error": {"code": code, "message": str(exc.errors())},
+            "error": {"code": error_code, "message": str(exc.errors())},
         },
     )
 
@@ -191,3 +239,50 @@ def ingest_gaze_observation(request: GazeObservationRequest) -> JSONResponse:
         status_code=200 if result.duplicate else 202,
         content=response.model_dump(),
     )
+
+
+@app.post("/v1/gaze/observations/authorized", response_model=GazeObservationResponse, tags=["gaze"])
+def ingest_authorized_gaze_observation(
+    request: AuthorizedGazeObservationRequest,
+    response: Response,
+    control_repository: Annotated[ControlPlaneRepository, Depends(get_control_repository)],
+    participant_cookie: str | None = Cookie(default=None, alias=PARTICIPANT_SESSION_COOKIE),
+    origin_header: str | None = Header(default=None, alias="Origin"),
+) -> JSONResponse:
+    """Process the additive authorized request without changing frozen v1."""
+    participant_session = require_participant_session(
+        request.session_id, participant_cookie, control_repository
+    )
+    origin = _validate_participant_origin(
+        participant_session["experience_id"], origin_header, control_repository
+    )
+    provider = TrustedGazeContextProvider(
+        control_repository=control_repository,
+        telemetry_repository=get_repository(),
+        participant_session=participant_session,
+    )
+    try:
+        context = provider.resolve(request.model_dump())
+        result = process_authorized_gaze(
+            request.provider_samples, context=context, repository=get_repository()
+        )
+    except RecordIdentityConflict:
+        return JSONResponse(
+            status_code=409,
+            content={"schema_version": "1.0.0", "error": {"code": "gaze_identity_conflict", "message": "gaze observation identity is already used with different content"}},
+        )
+    except (TypeError, ValueError) as exc:
+        return JSONResponse(
+            status_code=422,
+            content={"schema_version": "1.0.0", "error": {"code": "invalid_authorized_gaze_observation", "message": str(exc)}},
+        )
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Vary"] = "Origin"
+    output = GazeObservationResponse(
+        request_id=request.request_id,
+        status="duplicate" if result.duplicate else "processed",
+        duplicate=result.duplicate,
+        feature_record_id=result.feature_record["feature_record_id"],
+        sample_count=len(result.gaze_records),
+    )
+    return JSONResponse(status_code=200 if result.duplicate else 202, content=output.model_dump())

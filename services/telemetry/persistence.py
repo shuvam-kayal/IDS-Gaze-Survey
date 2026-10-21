@@ -16,6 +16,7 @@ from sqlalchemy import (
     Float,
     ForeignKeyConstraint,
     Integer,
+    PrimaryKeyConstraint,
     String,
     UniqueConstraint,
     create_engine,
@@ -26,6 +27,8 @@ from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
+from services.gaze_engine.geometry import GeometryScope, validate_geometry_snapshot
+from services.gaze_engine.geometry_bridge import SERVER_VALIDATED_PROVENANCE
 from services.telemetry.ingestion import _parse_utc_timestamp, validate_event
 
 
@@ -76,6 +79,33 @@ class SessionProcessing(Base):
     state: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class GeometrySnapshotRow(Base):
+    """Durable, study-scoped GeometrySnapshot v2 plus server metadata."""
+
+    __tablename__ = "geometry_snapshots"
+    __table_args__ = (
+        PrimaryKeyConstraint("session_id", "study_id", "snapshot_id"),
+    )
+
+    session_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    study_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    snapshot_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    aoi_set_version: Mapped[str] = mapped_column(String(255), nullable=False)
+    viewport_width_px: Mapped[float] = mapped_column(Float, nullable=False)
+    viewport_height_px: Mapped[float] = mapped_column(Float, nullable=False)
+    scroll_x_px: Mapped[float] = mapped_column(Float, nullable=False)
+    scroll_y_px: Mapped[float] = mapped_column(Float, nullable=False)
+    zoom: Mapped[float] = mapped_column(Float, nullable=False)
+    rectangles: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=False
+    )
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    provenance: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 class GazeRecordRow(Base):
@@ -277,6 +307,166 @@ class TelemetryRepository:
                     }
                 )
             return result
+
+    @staticmethod
+    def _geometry_fingerprint(snapshot: dict[str, Any]) -> str:
+        return hashlib.sha256(canonical_event(snapshot).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _serialize_geometry(row: GeometrySnapshotRow) -> dict[str, Any]:
+        return {
+            "schema_version": row.schema_version,
+            "snapshot_id": row.snapshot_id,
+            "session_id": row.session_id,
+            "study_id": row.study_id,
+            "captured_at": row.captured_at.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+            "aoi_set_version": row.aoi_set_version,
+            "viewport_width_px": row.viewport_width_px,
+            "viewport_height_px": row.viewport_height_px,
+            "scroll_x_px": row.scroll_x_px,
+            "scroll_y_px": row.scroll_y_px,
+            "zoom": row.zoom,
+            "rectangles": row.rectangles,
+        }
+
+    def persist_geometry_snapshot(
+        self,
+        snapshot: dict[str, Any],
+        *,
+        trusted_scope: GeometryScope,
+        provenance: str = "browser_submitted_untrusted",
+    ) -> bool:
+        """Persist one validated v2 snapshot with exact-retry semantics.
+
+        ``trusted_scope`` must be resolved by an upstream participant/session
+        and configuration service. Persisting a browser snapshot never makes
+        its rectangles authoritative; the provenance marker remains stored.
+        Returns ``True`` for an exact retry and ``False`` for a new row.
+        """
+
+        if not isinstance(provenance, str) or not provenance or len(provenance) > 64:
+            raise ValueError("geometry provenance must be a non-empty short string")
+        if provenance == SERVER_VALIDATED_PROVENANCE:
+            raise ValueError("server_validated geometry requires the server validation bridge")
+        normalized = validate_geometry_snapshot(snapshot, scope=trusted_scope)
+        fingerprint = self._geometry_fingerprint(normalized)
+        captured_at = _parse_utc_timestamp(normalized["captured_at"])
+        with self.sessions.begin() as db:
+            existing = db.get(
+                GeometrySnapshotRow,
+                (normalized["session_id"], normalized["study_id"], normalized["snapshot_id"]),
+            )
+            if existing is not None:
+                if existing.fingerprint != fingerprint:
+                    raise RecordIdentityConflict("geometry snapshot identity conflict")
+                return True
+            db.add(
+                GeometrySnapshotRow(
+                    session_id=normalized["session_id"],
+                    study_id=normalized["study_id"],
+                    snapshot_id=normalized["snapshot_id"],
+                    schema_version=normalized["schema_version"],
+                    captured_at=captured_at,
+                    aoi_set_version=normalized["aoi_set_version"],
+                    viewport_width_px=normalized["viewport_width_px"],
+                    viewport_height_px=normalized["viewport_height_px"],
+                    scroll_x_px=normalized["scroll_x_px"],
+                    scroll_y_px=normalized["scroll_y_px"],
+                    zoom=normalized["zoom"],
+                    rectangles=normalized["rectangles"],
+                    fingerprint=fingerprint,
+                    ingested_at=utc_now(),
+                    provenance=provenance,
+                )
+            )
+        return False
+
+    def persist_server_validated_geometry_snapshot(
+        self, snapshot: dict[str, Any], *, trusted_scope: GeometryScope
+    ) -> bool:
+        """Persist geometry only after the server validation bridge succeeds."""
+        normalized = validate_geometry_snapshot(snapshot, scope=trusted_scope)
+        fingerprint = self._geometry_fingerprint(normalized)
+        captured_at = _parse_utc_timestamp(normalized["captured_at"])
+        with self.sessions.begin() as db:
+            existing = db.get(
+                GeometrySnapshotRow,
+                (normalized["session_id"], normalized["study_id"], normalized["snapshot_id"]),
+            )
+            if existing is not None:
+                if existing.fingerprint != fingerprint or existing.provenance != SERVER_VALIDATED_PROVENANCE:
+                    raise RecordIdentityConflict("geometry snapshot identity conflict")
+                return True
+            db.add(
+                GeometrySnapshotRow(
+                    session_id=normalized["session_id"], study_id=normalized["study_id"],
+                    snapshot_id=normalized["snapshot_id"], schema_version=normalized["schema_version"],
+                    captured_at=captured_at, aoi_set_version=normalized["aoi_set_version"],
+                    viewport_width_px=normalized["viewport_width_px"], viewport_height_px=normalized["viewport_height_px"],
+                    scroll_x_px=normalized["scroll_x_px"], scroll_y_px=normalized["scroll_y_px"], zoom=normalized["zoom"],
+                    rectangles=normalized["rectangles"], fingerprint=fingerprint, ingested_at=utc_now(),
+                    provenance=SERVER_VALIDATED_PROVENANCE,
+                )
+            )
+        return False
+
+    def list_geometry_snapshots(
+        self,
+        session_id: str,
+        *,
+        study_id: str,
+        aoi_set_version: str,
+        at: datetime | str | None = None,
+        provenance: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List only snapshots matching one session/study/AOI scope.
+
+        When ``at`` is supplied, snapshots captured after that instant are
+        excluded. Ordering is captured time ascending, then snapshot identity.
+        """
+
+        if not all(isinstance(value, str) and value for value in (session_id, study_id, aoi_set_version)):
+            raise ValueError("geometry retrieval scope must be non-empty")
+        boundary = None
+        if at is not None:
+            boundary = _parse_utc_timestamp(at) if isinstance(at, str) else at
+            if boundary.tzinfo is None or boundary.utcoffset() != UTC.utcoffset(None):
+                raise ValueError("geometry retrieval boundary must be timezone-aware UTC")
+            boundary = boundary.astimezone(UTC)
+        with self.sessions() as db:
+            statement = select(GeometrySnapshotRow).where(
+                GeometrySnapshotRow.session_id == session_id,
+                GeometrySnapshotRow.study_id == study_id,
+                GeometrySnapshotRow.aoi_set_version == aoi_set_version,
+            )
+            if provenance is not None:
+                if not isinstance(provenance, str) or not provenance:
+                    raise ValueError("geometry provenance filter must be non-empty")
+                statement = statement.where(GeometrySnapshotRow.provenance == provenance)
+            if boundary is not None:
+                statement = statement.where(GeometrySnapshotRow.captured_at <= boundary)
+            rows = db.scalars(
+                statement.order_by(GeometrySnapshotRow.captured_at, GeometrySnapshotRow.snapshot_id)
+            ).all()
+            return [self._serialize_geometry(row) for row in rows]
+
+    def resolve_geometry_snapshot(
+        self,
+        session_id: str,
+        *,
+        study_id: str,
+        aoi_set_version: str,
+        at: datetime | str,
+    ) -> dict[str, Any] | None:
+        """Return the latest prior snapshot in the exact requested scope."""
+
+        snapshots = self.list_geometry_snapshots(
+            session_id,
+            study_id=study_id,
+            aoi_set_version=aoi_set_version,
+            at=at,
+        )
+        return snapshots[-1] if snapshots else None
 
     def mark_session_closed(self, session_id: str, *, partial: bool = False) -> None:
         now = utc_now()
@@ -556,6 +746,11 @@ class TelemetryRepository:
                 .filter_by(session_id=session_id)
                 .delete(synchronize_session=False)
             )
+            deleted_geometry = (
+                db.query(GeometrySnapshotRow)
+                .filter_by(session_id=session_id)
+                .delete(synchronize_session=False)
+            )
             return bool(
                 deleted_features
                 or deleted_association_records
@@ -563,6 +758,7 @@ class TelemetryRepository:
                 or deleted_gaze_records
                 or deleted_events
                 or deleted_processing
+                or deleted_geometry
             )
 
     def purge_expired_events(self, *, now: datetime | None = None, retention_days: int = 30) -> int:
@@ -585,6 +781,11 @@ class TelemetryRepository:
             event_result = db.execute(
                 delete(TelemetryEvent).where(
                     TelemetryEvent.session_id.in_(expired_sessions)
+                )
+            )
+            db.execute(
+                delete(GeometrySnapshotRow).where(
+                    GeometrySnapshotRow.session_id.in_(expired_sessions)
                 )
             )
             # Retention must remove the processing/idempotency state together
