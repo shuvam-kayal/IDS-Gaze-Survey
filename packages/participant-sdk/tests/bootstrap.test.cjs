@@ -97,6 +97,26 @@ test("participant consent and withdrawal helpers use credentialed state-changing
   }
 });
 
+test("survey persistence helper sends the exact frozen submission with session credentials", async () => {
+  const { submitParticipantSurvey } = await import("../src/bootstrap.js");
+  let request;
+  const submission = {
+    submission_id: "submission-1", session_id: "session/a", responses: [{
+      response_id: "response-1", submission_id: "submission-1", experience_id: "experience-test",
+      session_id: "session/a", participant_id: null, study_id: "study-a", question_id: "q1",
+      question_set_version: "questions-v3", answer_type: "free_text", answer: "answer",
+    }],
+  };
+  const result = await submitParticipantSurvey({
+    endpoint: "http://localhost:8000/v1/", sessionId: "session/a", submission,
+    fetchImpl: async (url, init) => { request = { url, init }; return { ok: true, json: async () => ({ ...submission, duplicate: false }) }; },
+  });
+  assert.equal(result.submission_id, submission.submission_id);
+  assert.equal(request.url, "http://localhost:8000/v1/sessions/session%2Fa/survey-responses");
+  assert.equal(request.init.credentials, "include");
+  assert.deepEqual(JSON.parse(request.init.body), submission);
+});
+
 test("loads version-pinned configs, separate survey plan, timing, and modality options", async () => {
   const { fetchParticipantConfiguration } = await import("../src/bootstrap.js");
   const configByStudy = new Map([

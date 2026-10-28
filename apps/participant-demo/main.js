@@ -7,7 +7,7 @@ import { mountParticipantEntry } from "../../packages/participant-sdk/src/entry-
 import { startInteractionCapture } from "../../packages/participant-sdk/src/interactions.js";
 import { createGeometryTracker } from "../../packages/participant-sdk/src/geometry.js";
 import { loadLiveConfig, loadOfflineConfig, runtimeSelection } from "./runtime-config.js";
-import { recordParticipantConsent, withdrawParticipantSession } from "../../packages/participant-sdk/src/bootstrap.js";
+import { recordParticipantConsent, submitParticipantSurvey, withdrawParticipantSession } from "../../packages/participant-sdk/src/bootstrap.js";
 
 const $ = (selector) => document.querySelector(selector);
 const experienceRoot = $("#experience");
@@ -125,11 +125,21 @@ function showTrial() {
 function showSurvey() {
   if (survey || !consent?.canCollectResearch) return;
   const runtime = createSurveyRuntime({ questionConfigs: config.question_configs ?? [config.question_config], surveyPlan: config.survey_plan, surveyPlanDetails: config.survey_plan_details, context: context(), consentController: consent, onSubmit: async (payload) => {
-    // The API does not yet expose survey response persistence; this demo confirms locally.
-    $("#survey-result").textContent = `Demo response ${payload.submission_id} saved in this page only.`;
-    interaction?.stop(); geometry?.stop();
-    const flushResult = await queue.close(); updateQueueStatus(flushResult);
-    return { saved: true };
+    try {
+      if (config.mode === "live") await queue.flush();
+      const result = config.mode === "live"
+        ? await submitParticipantSurvey({ endpoint: participantStateEndpoint(), sessionId: context().session_id, submission: payload })
+        : { duplicate: false, submission_id: payload.submission_id };
+      $("#survey-result").textContent = config.mode === "live"
+        ? `Response ${result.submission_id} persisted successfully${result.duplicate ? " (already received)" : ""}.`
+        : `Offline demo response ${payload.submission_id} remains in this page only.`;
+      interaction?.stop(); geometry?.stop();
+      const flushResult = await queue.close(); updateQueueStatus(flushResult);
+      return result;
+    } catch (error) {
+      $("#survey-result").textContent = `Response was not persisted: ${error instanceof Error ? error.message : "the server rejected the submission"}`;
+      throw error;
+    }
   } });
   survey = mountSurvey($("#survey"), { runtime, labels: { submit: "Submit sample answers", retrying: "Retrying…", retry: "Retry submission", requiredError: "Answer the required question before submitting.", booleanTrue: "Yes", booleanFalse: "No", success: "Thank you", retrySuccess: "Response submitted", retryFailure: "Submission failed; retry is available." } });
   const result = document.createElement("p"); result.id = "survey-result"; result.setAttribute("role", "status"); $("#survey").append(result);

@@ -62,3 +62,9 @@ export function withdrawParticipantSession(options: {
   occurredAt: string;
   fetchImpl?: typeof fetch;
 }): Promise<{ schema_version: "1.0.0"; status: "withdrawn"; withdrawn_at: string }>;
+export function submitParticipantSurvey(options: {
+  endpoint: string;
+  sessionId: string;
+  submission: import("./survey.js").SurveySubmission;
+  fetchImpl?: typeof fetch;
+}): Promise<{ schema_version: "1.0.0"; submission_id: string; session_id: string; responses: import("./survey.js").QuestionResponse[]; duplicate: boolean }>;

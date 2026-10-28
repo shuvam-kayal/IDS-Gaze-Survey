@@ -52,7 +52,7 @@ The cross-workstream integration decisions are frozen in [the integration freeze
 
 ## Current limitations
 
-The API persists events, participant consent, gaze/feature records, and analysis results in PostgreSQL. Researcher authentication is environment-provisioned through `CONTROL_PLANE_USERS_JSON` and `CONTROL_PLANE_SECRET`; set both before using the researcher console. Run `alembic upgrade head` after starting PostgreSQL. The participant survey currently keeps answers in page memory because no server survey-response endpoint is defined. Analytics jobs use in-process FastAPI background tasks and need a durable worker before multi-process deployment. Browser tests that require Chromium need a Playwright browser installation. These are development integrations; do not collect real participant data until deployment security, privacy, retention, and operational review is complete.
+The API persists events, participant consent, survey responses, gaze/feature records, and analysis results in PostgreSQL. Researcher authentication is environment-provisioned through `CONTROL_PLANE_USERS_JSON` and `CONTROL_PLANE_SECRET`; set both before using the researcher console. Run `alembic upgrade head` after starting PostgreSQL. Analytics jobs use in-process FastAPI background tasks and need a durable worker before multi-process deployment. Browser tests that require Chromium need a Playwright browser installation. These are development integrations; do not collect real participant data until deployment security, privacy, retention, and operational review is complete.
 
 ## Safety and research quality
 

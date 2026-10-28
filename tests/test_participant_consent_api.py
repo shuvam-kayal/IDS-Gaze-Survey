@@ -5,7 +5,10 @@ from pydantic import ValidationError
 from services.control_plane.router import (
     ParticipantConsentRequest,
     ParticipantWithdrawalRequest,
+    SurveySubmissionRequest,
     record_participant_consent,
+    list_participant_survey_submissions,
+    persist_participant_survey_submission,
     withdraw_participant_session,
 )
 
@@ -133,3 +136,59 @@ def test_missing_or_malformed_credentials_and_timestamps_fail_closed():
             Response(), repository, "credential-a", "http://localhost:5173",
         )
     assert malformed.value.status_code == 422
+
+
+def test_survey_submission_route_binds_session_origin_and_durable_callback():
+    class SurveyRepository(ConsentRepository):
+        def __init__(self):
+            super().__init__()
+            self.saved = []
+
+        def persist_survey_submission(self, payload):
+            self.saved.append(payload)
+            return {**payload, "duplicate": False}
+
+        def get_assignment(self, session_id):
+            return {"session_id": session_id, "experience_id": "experience-a", "assignments": []}
+
+    class Telemetry:
+        def list_feature_records(self, _session_id, *, study_id=None):
+            return []
+
+        def list_events(self, _session_id, *, study_id=None):
+            return []
+
+        def persist_feature_record(self, record):
+            return record
+
+    repository = SurveyRepository()
+    body = SurveySubmissionRequest(
+        submission_id="submission-1", session_id="session-a", responses=[{
+            "response_id": "response-1", "submission_id": "submission-1",
+            "experience_id": "experience-a", "session_id": "session-a", "study_id": "study-a",
+            "question_id": "q1", "question_set_version": "question-v1",
+            "answer_type": "free_text", "answer": "answer",
+        }],
+    )
+    result = persist_participant_survey_submission(
+        "session-a", body, Response(), repository, Telemetry(), "credential-a", "http://localhost:5173"
+    )
+    assert result.submission_id == "submission-1"
+    assert repository.saved[0]["session_id"] == "session-a"
+    repository.list_survey_submissions = lambda session_id: [repository.saved[0]]
+    listed = list_participant_survey_submissions(
+        "session-a", Response(), repository, "credential-a", "http://localhost:5173"
+    )
+    assert listed["session_id"] == "session-a"
+    assert listed["submissions"][0]["submission_id"] == "submission-1"
+    with pytest.raises(HTTPException) as unauthorized:
+        list_participant_survey_submissions(
+            "session-a", Response(), repository, "credential-b", "http://localhost:5173"
+        )
+    assert unauthorized.value.status_code == 401
+    with pytest.raises(HTTPException) as mismatch:
+        persist_participant_survey_submission(
+            "session-a", body.model_copy(update={"session_id": "session-b"}), Response(),
+            repository, Telemetry(), "credential-a", "http://localhost:5173",
+        )
+    assert mismatch.value.status_code == 422

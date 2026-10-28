@@ -176,6 +176,15 @@ export async function withdrawParticipantSession({ endpoint, sessionId, occurred
   return postParticipantState(fetchImpl, participantStateUrl(endpoint, sessionId, "withdraw"), { occurred_at: occurredAt });
 }
 
+/** Persist one validated SurveySubmission through the authenticated participant-session route. */
+export async function submitParticipantSurvey({ endpoint, sessionId, submission, fetchImpl = globalThis.fetch }) {
+  if (typeof fetchImpl !== "function") throw new TypeError("fetch is unavailable");
+  if (!record(submission) || submission.session_id !== sessionId || !nonEmptyString(submission.submission_id) || !Array.isArray(submission.responses)) {
+    throw new TypeError("submission must be a SurveySubmission for the requested session");
+  }
+  return postParticipantState(fetchImpl, participantStateUrl(endpoint, sessionId, "survey-responses"), submission);
+}
+
 /**
  * Ask the server to authorize the browser Origin and issue a session bootstrap.
  * Never pass an Origin value: browsers set that protected header themselves.
