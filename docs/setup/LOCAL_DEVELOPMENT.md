@@ -48,6 +48,9 @@ The integration freeze selects PostgreSQL 16, SQLAlchemy 2.x, psycopg 3 and
 Alembic. After PostgreSQL is running, apply all shared control-plane, telemetry,
 geometry, and analytics migrations with `alembic upgrade head`; inspect
 generated SQL without connecting with `alembic upgrade head --sql`. Start the
-participant demo and researcher console separately with their workspace npm
-scripts. The participant survey currently retains answers in page memory, and
-analytics jobs run in-process. Do not use this setup for real participant data.
+participant demo and researcher console separately with their workspace scripts.
+The participant demo persists completed survey responses through the API in live
+mode. Build the optional WebGazer bundle when testing camera capture; camera
+denial or provider failure continues through the non-gaze path, and only
+published Studies with `gaze_required: true` receive authorized gaze data.
+Analytics jobs run in-process. Do not use this setup for real participant data.

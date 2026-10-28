@@ -17,6 +17,7 @@ let detachQueueLifecycle = () => {};
 let config;
 let consent;
 let trial;
+const trials = new Map();
 let geometry;
 const geometries = new Map();
 let interaction;
@@ -93,23 +94,27 @@ function showTrial() {
   const panel = $("#trial");
   if (!trial) {
     const ctx = context();
-    const studyId = ctx.study_ids[0];
-    trial = new TrialLifecycle({ context: { experience_id: ctx.experience_id, session_id: ctx.session_id, study_id: studyId }, timingRules: config.trial_timing_rules, consentController: consent, onEvent: enqueue, onState: (state) => {
-      $("#trial-state").textContent = `Trial status: ${state.state}; elapsed ${Math.round(state.elapsed_ms)} ms.`;
+    const lifecycleStudyIds = config.gaze_study_ids?.length ? config.gaze_study_ids : [ctx.study_ids[0]];
+    for (const studyId of lifecycleStudyIds) {
+      const lifecycle = new TrialLifecycle({ context: { experience_id: ctx.experience_id, session_id: ctx.session_id, study_id: studyId }, timingRules: config.trial_timing_rules, consentController: consent, onEvent: enqueue, onState: (state) => {
+        $("#trial-state").textContent = `Trial status: ${state.state}; elapsed ${Math.round(state.elapsed_ms)} ms.`;
       if (["completed", "aborted", "skipped"].includes(state.state)) {
         $("#start-trial").disabled = true;
         $("#finish-trial").disabled = true;
       }
-      if (state.state === "completed") {
+      if (state.state === "completed" && lifecycle === trial) {
         // TrialLifecycle emits its completed state before emitting the terminal
         // exposure-ended event. Defer the server submission until the current
         // call stack finishes so the end event is queued and its flush can be
         // awaited before geometry/lifecycle validation runs.
         void Promise.resolve().then(() => submitGazeTrial(state.trial_id)).finally(() => showSurvey());
       }
-      else if (state.state === "aborted" || state.state === "skipped") showSurvey();
-    } });
-    trial.attachLifecycle();
+      else if ((state.state === "aborted" || state.state === "skipped") && lifecycle === trial) showSurvey();
+      } });
+      trials.set(studyId, lifecycle);
+      lifecycle.attachLifecycle();
+    }
+    trial = trials.get(lifecycleStudyIds[0]);
   }
   panel.innerHTML = `<h2>Study activity</h2><p>Read the sample content above, then start a short trial. The trial ends automatically after 15 seconds, or you can finish early.</p><p id="trial-state" role="status">Trial status: ready.</p><div class="actions"><button class="primary" id="start-trial">Start trial</button><button id="finish-trial" disabled>Finish trial</button></div><div id="trial-geometry" class="quiet"></div>`;
   $("#start-trial").addEventListener("click", () => {
@@ -122,7 +127,8 @@ function showTrial() {
     // refresh or repeat leaves multiple valid start/end pairs in the same
     // session, which the server must reject as an ambiguous observation
     // window.
-    trial.start(newDemoTrialId());
+    const trialId = newDemoTrialId();
+    trials.forEach((lifecycle) => lifecycle.start(trialId));
     trialGeometries.clear();
     geometries.forEach((tracker, studyId) => { const snapshot = tracker.flush({ force: true }) || latestGeometries.get(studyId); if (snapshot) trialGeometries.set(studyId, snapshot); });
     trialGeometry = trialGeometries.get((config.gaze_study_ids ?? [])[0]) || latestGeometry;
@@ -133,7 +139,7 @@ function showTrial() {
   $("#finish-trial").addEventListener("click", () => {
     geometries.forEach((tracker, studyId) => { const snapshot = tracker.flush({ force: true }) || trialGeometries.get(studyId) || latestGeometries.get(studyId); if (snapshot) trialGeometries.set(studyId, snapshot); });
     trialGeometry = trialGeometries.get((config.gaze_study_ids ?? [])[0]) || trialGeometry || latestGeometry;
-    trial.complete();
+    trials.forEach((lifecycle) => lifecycle.complete());
   });
 }
 function showSurvey() {
