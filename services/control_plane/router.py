@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from services.control_plane.auth import (
@@ -806,6 +806,7 @@ def create_session_bootstrap(
     repository: Annotated[ControlPlaneRepository, Depends(get_control_repository)],
     origin_header: Annotated[str | None, Header(alias="Origin")] = None,
     participant_cookie: Annotated[str | None, Cookie(alias=PARTICIPANT_SESSION_COOKIE)] = None,
+    new_session: Annotated[bool, Query()] = False,
 ) -> SessionBootstrapResponse:
     """Create a participant session only from a published, origin-authorized Experience."""
     if body.schema_version != "1.0.0":
@@ -818,7 +819,7 @@ def create_session_bootstrap(
     if not experience or experience["status"] != "published" or not experience.get("config_version"):
         raise HTTPException(status_code=409, detail="Experience has no published config version")
     existing = repository.find_participant_session_by_credential(participant_cookie) if participant_cookie else None
-    if existing is not None and existing["experience_id"] == experience_id:
+    if existing is not None and existing["experience_id"] == experience_id and not new_session:
         session_id = existing["session_id"]
         issued_at = existing["issued_at"]
         expires_at = existing["expires_at"]

@@ -64,15 +64,16 @@ def test_thresholds_are_inclusive_for_valid_fraction_and_confidence():
     assert assessment.quality_status == "usable"
 
 
-def test_missing_confidence_is_low_quality_not_invalid_gaze():
+def test_missing_confidence_is_unverified_not_invalid_gaze():
     normalized = records(
         [provider_sample(f"sample-{i}", f"2026-01-01T10:00:0{i}Z", None) for i in range(3)]
     )
     assert all(record["valid"] for record in normalized)
     assessment = evaluate_gaze_quality(normalized)
-    assert assessment.quality_status == "low_quality"
+    assert assessment.quality_status == "usable_unverified"
     assert assessment.mean_confidence is None
     assert "quality.confidence_missing" in assessment.quality_flags
+    assert assessment.missingness == ("gaze.quality_unverified",)
 
 
 def test_invalid_only_input_is_insufficient_not_valid_gaze():
@@ -95,7 +96,7 @@ def test_missing_coordinates_are_not_converted_to_zero():
     assert assessment.valid_sample_count == 0
 
 
-def test_mixed_missing_confidence_is_explicitly_low_quality():
+def test_mixed_missing_confidence_is_explicitly_unverified():
     assessment = evaluate_gaze_quality(
         records(
             [
@@ -106,8 +107,8 @@ def test_mixed_missing_confidence_is_explicitly_low_quality():
         )
     )
     assert assessment.mean_confidence == 0.8
-    assert assessment.quality_status == "low_quality"
-    assert "gaze.low_quality" in assessment.missingness
+    assert assessment.quality_status == "usable_unverified"
+    assert "gaze.quality_unverified" in assessment.missingness
 
 
 def test_low_confidence_is_distinguished_from_invalid_samples():

@@ -39,13 +39,14 @@ function consentPolicy(bootstrap, gazeRequired) {
 }
 
 /** Load the actual P2 participant resources; no fixture fallback is attempted. */
-export async function loadLiveConfig({ apiBaseUrl, experienceId, fetchImpl = globalThis.fetch?.bind(globalThis), now = Date.now() } = {}) {
+export async function loadLiveConfig({ apiBaseUrl, experienceId, newSession = false, fetchImpl = globalThis.fetch?.bind(globalThis), now = Date.now() } = {}) {
   if (!nonEmpty(apiBaseUrl) || !nonEmpty(experienceId)) {
     throw new TypeError("Live mode requires an API base URL and experience_id");
   }
   const base = apiBaseUrl.replace(/\/$/, "");
+  const bootstrapPath = newSession ? "/v1/sessions/bootstrap?new_session=1" : "/v1/sessions/bootstrap";
   const configuration = await fetchParticipantConfiguration({
-    bootstrapUrl: joinUrl(base, "/v1/sessions/bootstrap"),
+    bootstrapUrl: joinUrl(base, bootstrapPath),
     experienceId,
     cameraCaptureSupported: Boolean(globalThis.navigator?.mediaDevices?.getUserMedia),
     studyConfigUrl: (studyId, version, sessionId) => joinUrl(base, `/v1/sessions/${encodeURIComponent(sessionId)}/studies/${encodeURIComponent(studyId)}/study-config?config_version=${encodeURIComponent(version)}`),
@@ -64,6 +65,9 @@ export async function loadLiveConfig({ apiBaseUrl, experienceId, fetchImpl = glo
   if (!study) throw new Error("The server assigned no eligible studies");
   const index = configuration.bootstrap.eligible_studies.findIndex((item) => item.study_id === study.study_id);
   const gazeStudyIds = configuration.studyConfigs.filter((item) => item.gaze_required).map((item) => item.study_id);
+  if (newSession) {
+    try { globalThis.sessionStorage?.removeItem(`ids-participant-completed:${experienceId}`); } catch { /* storage may be unavailable */ }
+  }
   return {
     mode: "live",
     api_base_url: base,

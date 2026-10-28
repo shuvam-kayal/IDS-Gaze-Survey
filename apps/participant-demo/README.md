@@ -18,6 +18,12 @@ For an explicitly offline fixture-only run, use `http://localhost:5173/?mode=off
 
 The researcher control plane exposes the contract v1 session-bootstrap and pinned Study/AOI/Question config resources under `/v1/sessions`. Consent records and completed survey answers are persisted through authenticated participant-session routes; the live demo reports an error and keeps the submission retryable if the API does not accept it. Offline mode remains explicitly page-only. The event queue is bounded in memory and retains events through temporary network failures while this page remains open. It drops pending research events on withdrawal and does not flush them as part of withdrawal.
 
+After a live survey submission succeeds, the demo marks the current browser
+tab as completed. Its next refresh requests a fresh participant session, so a
+new trial produces another FeatureRecord under the same feature-set version.
+Refreshing before completion resumes the existing session. Existing records
+are never overwritten.
+
 Camera access is requested only after both separate consent choices and only when at least one assigned Study requires gaze. The demo accepts a P3 `ProviderAdapter` through `window.IDS_GAZE_PROVIDER`; it does not bundle WebGazer or implement gaze processing. Without that adapter, the camera flow reports a provider fallback and the non-gaze journey continues. To supply the adapter, load its browser bundle before `main.js`. The SDK passes explicit consent, session, Study-scoped geometry, and callbacks; the provider owns camera acquisition and cleanup through its supported API.
 
 The live trial timing is derived from the selected study's pinned survey-plan details; the offline fixture uses its checked-in timing rule. The survey is rendered from the server-pinned `QuestionConfig` and `SurveyPlan` in live mode. Interaction capture excludes form and editable fields and uses only the fixture's explicit event allow-list. The current P2 bootstrap exposes consent policy versions, not policy text; the demo displays neutral local explanatory text while preserving those server versions, so a production participant surface still needs its approved consent-content integration.

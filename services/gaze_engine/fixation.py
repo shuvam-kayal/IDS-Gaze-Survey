@@ -350,12 +350,30 @@ def map_fixations_to_aois(
     session_id: str,
     geometry_snapshots: list[dict[str, Any]],
     *,
+    records: list[dict[str, Any]] | None = None,
     study_id: str | None = None,
     aoi_set_version: str | None = None,
 ) -> list[AOIAssignment]:
-    """Map fixation centroids using a study/version-matched snapshot."""
+    """Map fixations using samples first, then their centroid.
+
+    Provider jitter can move a fixation centroid just outside an AOI even when
+    most samples in that fixation are inside it. When canonical samples are
+    available, use a strict majority AOI vote before falling back to the
+    centroid. Geometry scope and version matching remain unchanged.
+    """
 
     snapshots = _snapshots(geometry_snapshots)
+    sample_assignments: dict[str, AOIAssignment] = {}
+    if records is not None:
+        sample_assignments = {
+            assignment.observation_id: assignment
+            for assignment in map_gaze_to_aois(
+                records,
+                geometry_snapshots,
+                study_id=study_id,
+                aoi_set_version=aoi_set_version,
+            )
+        }
     versions = {(snapshot["_study_id"], snapshot["aoi_set_version"]) for snapshot in snapshots}
     if (study_id is None or aoi_set_version is None) and (len(versions) > 1 or any(snapshot["schema_version"] == "2.0.0" for snapshot in snapshots)):
         raise GazeNormalizationError("study_id and aoi_set_version are required for multi-study AOI mapping")
@@ -371,7 +389,21 @@ def map_fixations_to_aois(
         if snapshot is None:
             assignments.append(AOIAssignment(fixation.fixation_id, "aoi.unresolved", None, "aoi.unresolved", session_id, study_id, fixation.trial_id, aoi_set_version))
             continue
-        aoi_id = _resolve_aoi(snapshot, fixation.x_normalized, fixation.y_normalized)
+        votes = [
+            sample_assignments[sample_id]
+            for sample_id in fixation.sample_ids
+            if sample_id in sample_assignments and sample_assignments[sample_id].aoi_id != "aoi.unresolved"
+        ]
+        aoi_id = None
+        if votes:
+            counts: dict[str, int] = {}
+            for vote in votes:
+                counts[vote.aoi_id] = counts.get(vote.aoi_id, 0) + 1
+            winner, count = max(counts.items(), key=lambda item: (item[1], item[0]))
+            if count * 2 > len(fixation.sample_ids):
+                aoi_id = winner
+        if aoi_id is None:
+            aoi_id = _resolve_aoi(snapshot, fixation.x_normalized, fixation.y_normalized)
         assignments.append(
             AOIAssignment(
                 fixation.fixation_id,

@@ -160,10 +160,10 @@ def test_synthetic_webgazer_provider_samples_reach_canonical_feature_pipeline():
     record = run(samples)
     assert_feature_record_schema(record)
     assert record["modality"] == "gaze_and_non_gaze"
-    assert record["features"]["gaze.dwell_time_ms"]["value"] is None
-    assert record["features"]["gaze.dwell_time_ms"]["missingness"] == "gaze.low_quality"
+    assert record["features"]["gaze.dwell_time_ms"]["value"] is not None
+    assert record["features"]["gaze.dwell_time_ms"]["missingness"] is None
     assert record["quality"]["gaze_available"] is True
-    assert "gaze.low_quality" in record["quality"]["missingness"]
+    assert "gaze.quality_unverified" in record["quality"]["missingness"]
     assert record["quality"]["calibration_status"] == "not_required"
     assert "video" not in json.dumps(record).lower()
 

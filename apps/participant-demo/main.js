@@ -12,6 +12,7 @@ import { recordParticipantConsent, submitParticipantSurvey, withdrawParticipantS
 const $ = (selector) => document.querySelector(selector);
 const experienceRoot = $("#experience");
 const queueStatus = $("#queue-status");
+const diagnostics = $("#diagnostics");
 let queue;
 let detachQueueLifecycle = () => {};
 let config;
@@ -33,6 +34,12 @@ let trialStartAt = null;
 let trialEndAt = null;
 let trialResultSubmitted = false;
 let trialSequence = 0;
+
+function writeDiagnostics(message) {
+  if (!diagnostics) return;
+  const line = `[${new Date().toISOString()}] ${message}`;
+  diagnostics.textContent = `${diagnostics.textContent === "Waiting for participant configuration…" ? "" : `${diagnostics.textContent}\n`}${line}`;
+}
 
 function newDemoTrialId() {
   trialSequence += 1;
@@ -64,21 +71,32 @@ async function submitGazeTrial(trialId) {
     await queue.flush();
     if (!trialStartAt || !trialEndAt) throw new Error("trial boundaries are unavailable");
     const samples = gazeSamples.filter((sample) => sample.occurred_at >= trialStartAt && sample.occurred_at < trialEndAt).slice(0, 250);
+    writeDiagnostics(`Trial ${trialId}: ${samples.length} gaze sample(s) in the trusted trial window.`);
+    const validSamples = samples.filter((sample) => sample.valid === true && Number.isFinite(sample.x_px) && Number.isFinite(sample.y_px));
+    if (validSamples.length) {
+      const xs = validSamples.map((sample) => sample.x_px); const ys = validSamples.map((sample) => sample.y_px);
+      writeDiagnostics(`Trial ${trialId}: valid gaze bounds x=${Math.min(...xs)}..${Math.max(...xs)}, y=${Math.min(...ys)}..${Math.max(...ys)} (${validSamples.length} valid sample(s)); coordinates are viewport pixels.`);
+    } else writeDiagnostics(`Trial ${trialId}: no valid viewport-coordinate samples were captured.`);
     if (!samples.length) throw new Error("no gaze samples in the completed trial window");
     const processed = [];
     for (const studyId of (config.gaze_study_ids ?? [])) {
       const observationGeometry = trialGeometries.get(studyId) || latestGeometries.get(studyId);
       if (!observationGeometry) throw new Error(`geometry is unavailable for Study ${studyId}`);
+      const rectangleSummary = observationGeometry.rectangles.map((rectangle) => `${rectangle.aoi_id}[${rectangle.left_px},${rectangle.top_px}..${rectangle.right_px},${rectangle.bottom_px}]`).join("; ") || "none";
+      writeDiagnostics(`Study ${studyId}: AOI version ${observationGeometry.aoi_set_version}; ${observationGeometry.rectangles.length} visible rectangle(s); viewport ${observationGeometry.viewport_width_px}x${observationGeometry.viewport_height_px}; ${rectangleSummary}.`);
       const geometryUrl = `${config.api_base_url}/v1/sessions/${encodeURIComponent(context().session_id)}/studies/${encodeURIComponent(studyId)}/trials/${encodeURIComponent(trialId)}/geometry`;
       const geometryResponse = await fetch(geometryUrl, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ study_id: studyId, trial_id: trialId, snapshot: observationGeometry }) });
       if (!geometryResponse.ok) throw new Error(`geometry submission rejected for Study ${studyId} (${geometryResponse.status})`);
+      writeDiagnostics(`Study ${studyId}: geometry accepted (${geometryResponse.status}).`);
       const response = await fetch(`${config.api_base_url}/v1/gaze/observations/authorized`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ schema_version: "1.1.0", request_id: `gaze:${context().session_id}:${trialId}:${studyId}`, session_id: context().session_id, study_id: studyId, trial_id: trialId, provider_samples: samples }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.detail || body?.error?.message || `gaze submission rejected for Study ${studyId} (${response.status})`);
+      writeDiagnostics(`Study ${studyId}: authorized gaze response ${response.status}; P3 status ${body?.status ?? "not supplied"}.`);
       processed.push(`${studyId} (${body.status})`);
     }
     if (target) target.textContent = `Geometry accepted; gaze processed for ${processed.length} Study record(s) (${samples.length} sample(s)).`;
   } catch (error) {
+    writeDiagnostics(`Gaze processing failed: ${error instanceof Error ? error.message : String(error)}`);
     if (target) target.textContent = `Gaze processing unavailable: ${error.message}`;
   }
 }
@@ -150,6 +168,9 @@ function showSurvey() {
       const result = config.mode === "live"
         ? await submitParticipantSurvey({ endpoint: participantStateEndpoint(), sessionId: context().session_id, submission: payload })
         : { duplicate: false, submission_id: payload.submission_id };
+      if (config.mode === "live") {
+        try { globalThis.sessionStorage?.setItem(`ids-participant-completed:${config.session_bootstrap.experience_id}`, "1"); } catch { /* storage may be unavailable */ }
+      }
       $("#survey-result").textContent = config.mode === "live"
         ? `Response ${result.submission_id} persisted successfully${result.duplicate ? " (already received)" : ""}.`
         : `Offline demo response ${payload.submission_id} remains in this page only.`;
@@ -177,7 +198,7 @@ function startJourney(modality) {
     for (const aoiConfig of aoiConfigs) {
       if (!gazeIds.has(aoiConfig.study_id)) continue;
       const studyId = aoiConfig.study_id;
-      const tracker = createGeometryTracker({ aoiConfig, context: { experience_id: ctx.experience_id, session_id: ctx.session_id, study_id: studyId }, controller: consent, onSnapshot: (snapshot) => { latestGeometries.set(studyId, snapshot); if (studyId === (config.gaze_study_ids ?? [])[0]) { latestGeometry = snapshot; const target = $("#trial-geometry"); if (target) target.textContent = `AOI geometry updated (${snapshot.rectangles.length} visible area(s)).`; } } });
+      const tracker = createGeometryTracker({ aoiConfig, context: { experience_id: ctx.experience_id, session_id: ctx.session_id, study_id: studyId }, controller: consent, onSnapshot: (snapshot) => { latestGeometries.set(studyId, snapshot); writeDiagnostics(`Study ${studyId}: AOI selector ${aoiConfig.aois.map((item) => item.selector).join(", ")}; ${snapshot.rectangles.length} visible rectangle(s).`); if (studyId === (config.gaze_study_ids ?? [])[0]) { latestGeometry = snapshot; const target = $("#trial-geometry"); if (target) target.textContent = `AOI geometry updated (${snapshot.rectangles.length} visible area(s)).`; } } });
       geometries.set(studyId, tracker); tracker.start();
     }
     geometry = geometries.get((config.gaze_study_ids ?? [])[0]) || null;
@@ -228,15 +249,21 @@ async function startConsent() {
 const selection = runtimeSelection();
 const loadConfig = selection.mode === "offline"
   ? () => loadOfflineConfig()
-  : () => loadLiveConfig({ apiBaseUrl: selection.apiBaseUrl, experienceId: selection.experienceId });
+  : () => {
+    let newSession = false;
+    try { newSession = globalThis.sessionStorage?.getItem(`ids-participant-completed:${selection.experienceId}`) === "1"; } catch { /* storage may be unavailable */ }
+    return loadLiveConfig({ apiBaseUrl: selection.apiBaseUrl, experienceId: selection.experienceId, newSession });
+  };
 
 void loadConfig().then((loaded) => {
   config = loaded;
+  writeDiagnostics(`Session ${loaded.session_bootstrap.session_id}; Experience ${loaded.session_bootstrap.experience_id}; assigned Studies ${loaded.session_bootstrap.eligible_studies.map((study) => study.study_id).join(", ") || "none"}.`);
+  writeDiagnostics(`Gaze-enabled Studies: ${(loaded.gaze_study_ids ?? []).join(", ") || "none"}.`);
   const modeNotice = document.createElement("p");
   modeNotice.className = "quiet";
   modeNotice.textContent = loaded.mode === "offline"
     ? "Offline demo mode: checked-in fixture only; no live P2 session is created."
-    : `Live P2 mode: session configuration loaded for Experience ${loaded.session_bootstrap.experience_id}.`;
+    : `Live P2 mode: session ${loaded.session_bootstrap.session_id} loaded for Experience ${loaded.session_bootstrap.experience_id}.`;
   $("#journey").prepend(modeNotice);
   queue = new EventQueue({ endpoint: config.event_ingestion_url, maxQueueSize: 500 });
   detachQueueLifecycle = queue.attachLifecycle({ window });

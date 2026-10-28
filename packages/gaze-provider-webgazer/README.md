@@ -23,7 +23,9 @@ because the documented prediction callback does not provide a confidence
 score. Under the existing P3 quality boundary, a sequence with otherwise
 valid predictions but no confidence is therefore marked low quality and does
 not produce gaze metrics; this is intentional missingness, not a fabricated
-confidence or measured zero.
+confidence or measured zero. P3 treats this as usable-but-unverified when the
+coordinates themselves are valid; it reports the missing confidence separately
+and does not claim a numeric quality score.
 
 ## Approved camera lifecycle
 

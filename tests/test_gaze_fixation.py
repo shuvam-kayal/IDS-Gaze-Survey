@@ -171,6 +171,25 @@ def test_fixation_mapping_uses_latest_prior_snapshot_and_preserves_quality_bound
     assert assignment.snapshot_id == "geometry-1"
 
 
+def test_fixation_mapping_uses_sample_majority_when_centroid_crosses_aoi_edge():
+    geometry = snapshot([rectangle("target", 0, 0, 50, 100)])
+    sample_records = records(
+        [
+            provider_sample("s0", 0, x=49, y=50),
+            provider_sample("s1", 100, x=49, y=50),
+            provider_sample("s2", 200, x=49, y=50),
+            provider_sample("s3", 300, x=53.9, y=50),
+            provider_sample("s4", 400, x=53.9, y=50),
+        ]
+    )
+    fixation = detect_fixations(sample_records)[0]
+    assert fixation.x_normalized > 0.5
+    assignment = map_fixations_to_aois(
+        [fixation], SESSION_ID, [geometry], records=sample_records
+    )[0]
+    assert assignment.aoi_id == "target"
+
+
 def test_non_gaze_empty_path_has_no_fabricated_results():
     assert detect_fixations([]) == []
     assert map_gaze_to_aois([], []) == []

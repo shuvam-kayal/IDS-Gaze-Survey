@@ -4,6 +4,7 @@ body { margin: 0; line-height: 1.55; }
 .site-header { max-width: 72rem; margin: auto; padding: 1rem 1.5rem; display: flex; justify-content: space-between; color: #4e5c6e; }
 .brand { color: #172333; font-weight: 700; text-decoration: none; }
 main { max-width: 72rem; margin: 2rem auto; padding: 0 1.5rem; display: grid; gap: 1.25rem; }
+#study-content { width: 100vw; margin-left: calc(50% - 50vw); padding: 0 1.5rem; }
 .intro { padding: 2.5rem clamp(1.25rem, 5vw, 4rem); border-radius: 1.25rem; background: linear-gradient(125deg, #e6f1ff, #f0ebff); }
 h1 { max-width: 42rem; margin: .25rem 0 .75rem; font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.08; letter-spacing: -.035em; }
 h2 { margin-top: 0; }
@@ -16,7 +17,8 @@ button { min-height: 2.75rem; padding: .55rem 1rem; border: 1px solid #b7c6d8; b
 button:hover { background: #f0f5ff; }
 button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #3976d2; outline-offset: 3px; }
 button.primary { border-color: #225bb2; background: #225bb2; color: white; }
-button:disabled { opacity: .65; cursor: wait; }
+button:disabled { opacity: .65; cursor: not-allowed; }
+.diagnostics { max-height: 18rem; overflow: auto; white-space: pre-wrap; font-size: .8rem; }
 .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
 .quiet { color: #657386; font-size: .9rem; }
 .ids-consent-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }

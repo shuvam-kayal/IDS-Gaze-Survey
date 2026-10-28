@@ -16,3 +16,10 @@ def test_researcher_console_shell_navigation_and_seed_fixture_are_wired():
     assert fixture["experience"]["allowed_origins"] == ["http://localhost:5173"]
     assert len(fixture["studies"]) == 2
     assert all(study["questions"] and study["aois"] and study["timing_rules"] for study in fixture["studies"])
+    assert [study["gaze_required"] for study in fixture["studies"]] == [True, False]
+    assert fixture["studies"][0]["aois"][0]["selector"] == "#study-content"
+    participant_html = (Path(__file__).parents[1] / "apps" / "participant-demo" / "index.html").read_text()
+    assert 'id="study-content" data-aoi="product-card"' in participant_html
+    assert 'id="diagnostics"' in participant_html
+    participant_css = (Path(__file__).parents[1] / "apps" / "participant-demo" / "style.css").read_text()
+    assert "#study-content { width: 100vw;" in participant_css
