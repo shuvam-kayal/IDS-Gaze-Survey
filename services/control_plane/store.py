@@ -356,7 +356,7 @@ class ControlPlaneRepository:
                           "status": "active", "aoi_set_version": aoi_version,
                           "question_set_version": question_version,
                           "survey_policy": row.config.get("survey_policy", {"timing": "after_exposure", "consolidation": "deduplicate_by_question_id"}),
-                          "gaze_required": False, "priority": row.priority,
+                          "gaze_required": bool(row.config.get("gaze_required", False)), "priority": row.priority,
                           "aoi_config": {"schema_version": "1.0.0", "config_version": aoi_version,
                                          "items": row.config.get("aois", [])},
                           "question_config": {"schema_version": "1.0.0", "study_id": row.study_id,

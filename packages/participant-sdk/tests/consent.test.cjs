@@ -46,6 +46,17 @@ test("provider receives the frozen consent-gated input and no camera stream", as
   assert.equal(controller.snapshot().camera.status, "active");
 });
 
+test("stopping camera capture does not withdraw the participant session", async () => {
+  const controller = await consented();
+  let stops = 0;
+  const provider = { async start(value) { value.on_status("ready"); }, stop() { stops += 1; } };
+  await controller.startCamera(input(provider));
+  await controller.stopCamera();
+  assert.equal(stops, 1);
+  assert.equal(controller.snapshot().withdrawal.withdrawn, false);
+  assert.equal(controller.canCollectResearch, true);
+});
+
 test("provider permission denial preserves research and explicit non-gaze fallback", async () => {
   const controller = await consented();
   const statuses = [];

@@ -1,5 +1,6 @@
 import { ResearcherApi, type ExperienceRecord } from "../experiences/api.js";
 import { createAnalyticsClient, type AnalysisRequestV1, type AnalysisType, type AnalysisResultV1 } from "./client.js";
+import { analyticsStudyLabel, featureVersionState, uniqueAnalyticsStudies } from "./state.js";
 
 const analysisTypes: AnalysisType[] = ["descriptive", "correlation", "group_comparison", "classification", "regression", "clustering"];
 
@@ -28,7 +29,9 @@ export function mountAnalyticsScreen(root: HTMLElement, api: ResearcherApi) {
   };
   updateRunAvailability();
 
+  let versionLoad = 0;
   const loadVersions = async () => {
+    const loadId = ++versionLoad;
     versionSelect.replaceChildren();
     versionSelect.disabled = true;
     updateRunAvailability();
@@ -37,12 +40,13 @@ export function mountAnalyticsScreen(root: HTMLElement, api: ResearcherApi) {
     status.textContent = "Loading feature versions…";
     try {
       const discovered = await analytics.listFeatureSets(studyId);
+      if (loadId !== versionLoad || studySelect.value !== studyId) return;
       for (const version of discovered.feature_set_versions) { const option = document.createElement("option"); option.value = version; option.textContent = version; versionSelect.append(option); }
-      versionSelect.disabled = discovered.feature_set_versions.length === 0;
-      status.textContent = discovered.feature_set_versions.length
-        ? "Feature versions loaded."
-        : "No eligible persisted feature records are available for this study; collect participant data before running analysis.";
+      const state = featureVersionState(discovered.feature_set_versions);
+      versionSelect.disabled = state.disabled;
+      status.textContent = state.message;
     } catch (error) {
+      if (loadId !== versionLoad || studySelect.value !== studyId) return;
       versionSelect.disabled = true;
       status.textContent = error instanceof Error ? `Feature-version discovery failed: ${error.message}` : "Feature-version discovery failed.";
     }
@@ -75,17 +79,17 @@ export function mountAnalyticsScreen(root: HTMLElement, api: ResearcherApi) {
     status.textContent = "Loading studies…";
     try {
       const experiences: ExperienceRecord[] = await api.experiences();
-      const studies = (await Promise.all(experiences.map((experience) => api.studies(experience.experience_id)))).flat().filter((study) => study.status === "published");
-      const seenStudyIds = new Set<string>();
-      for (const study of studies) {
-        if (seenStudyIds.has(study.study_id)) continue;
-        seenStudyIds.add(study.study_id);
-        const experience = experiences.find((item) => item.experience_id === study.experience_id);
+      const studyLists = await Promise.all(experiences.map(async (experience) => [
+        experience.experience_id, await api.studies(experience.experience_id),
+      ] as const));
+      const studies = uniqueAnalyticsStudies(experiences, new Map(studyLists));
+      for (const { study, experience } of studies) {
         const option = document.createElement("option"); option.value = study.study_id;
-        option.textContent = `${study.name} — ${experience?.name ?? "Experience"} (${study.study_id})`;
+        option.textContent = analyticsStudyLabel(study, experience);
+        option.title = `Study ID: ${study.study_id}\nStatus: ${study.status}`;
         studySelect.append(option);
       }
-      if (!studies.length) status.textContent = "Publish a study and collect participant feature data to begin analysis.";
+      if (!studies.length) status.textContent = "No accessible non-archived Studies are available.";
       else { status.textContent = "Choose a study; feature versions will be discovered from persisted eligible records."; await loadVersions(); }
       updateRunAvailability();
     } catch (error) { submit.disabled = true; versionSelect.disabled = true; status.textContent = error instanceof Error ? error.message : "Could not load studies. Sign in with study viewing access."; }

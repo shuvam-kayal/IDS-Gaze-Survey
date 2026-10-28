@@ -18,11 +18,14 @@ let config;
 let consent;
 let trial;
 let geometry;
+const geometries = new Map();
 let interaction;
 let survey;
 let trialActions;
 let latestGeometry = null;
 let trialGeometry = null;
+const latestGeometries = new Map();
+const trialGeometries = new Map();
 let gazeSamples = [];
 let gazeEnabled = false;
 let trialStartAt = null;
@@ -58,18 +61,22 @@ async function submitGazeTrial(trialId) {
   const target = $("#trial-geometry");
   try {
     await queue.flush();
-    const observationGeometry = trialGeometry || latestGeometry;
-    if (!observationGeometry || !trialStartAt || !trialEndAt) throw new Error("trial boundaries or geometry are unavailable");
-    const studyId = context().study_ids[0];
-    const geometryUrl = `${config.api_base_url}/v1/sessions/${encodeURIComponent(context().session_id)}/studies/${encodeURIComponent(studyId)}/trials/${encodeURIComponent(trialId)}/geometry`;
-    const geometryResponse = await fetch(geometryUrl, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ study_id: studyId, trial_id: trialId, snapshot: observationGeometry }) });
-    if (!geometryResponse.ok) throw new Error(`geometry submission rejected (${geometryResponse.status})`);
+    if (!trialStartAt || !trialEndAt) throw new Error("trial boundaries are unavailable");
     const samples = gazeSamples.filter((sample) => sample.occurred_at >= trialStartAt && sample.occurred_at < trialEndAt).slice(0, 250);
     if (!samples.length) throw new Error("no gaze samples in the completed trial window");
-    const response = await fetch(`${config.api_base_url}/v1/gaze/observations/authorized`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ schema_version: "1.1.0", request_id: `gaze:${context().session_id}:${trialId}`, session_id: context().session_id, study_id: studyId, trial_id: trialId, provider_samples: samples }) });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body?.detail || body?.error?.message || `gaze submission rejected (${response.status})`);
-    if (target) target.textContent = `Geometry accepted; gaze processed (${body.sample_count} sample(s), ${body.status}).`;
+    const processed = [];
+    for (const studyId of (config.gaze_study_ids ?? [])) {
+      const observationGeometry = trialGeometries.get(studyId) || latestGeometries.get(studyId);
+      if (!observationGeometry) throw new Error(`geometry is unavailable for Study ${studyId}`);
+      const geometryUrl = `${config.api_base_url}/v1/sessions/${encodeURIComponent(context().session_id)}/studies/${encodeURIComponent(studyId)}/trials/${encodeURIComponent(trialId)}/geometry`;
+      const geometryResponse = await fetch(geometryUrl, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ study_id: studyId, trial_id: trialId, snapshot: observationGeometry }) });
+      if (!geometryResponse.ok) throw new Error(`geometry submission rejected for Study ${studyId} (${geometryResponse.status})`);
+      const response = await fetch(`${config.api_base_url}/v1/gaze/observations/authorized`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ schema_version: "1.1.0", request_id: `gaze:${context().session_id}:${trialId}:${studyId}`, session_id: context().session_id, study_id: studyId, trial_id: trialId, provider_samples: samples }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.detail || body?.error?.message || `gaze submission rejected for Study ${studyId} (${response.status})`);
+      processed.push(`${studyId} (${body.status})`);
+    }
+    if (target) target.textContent = `Geometry accepted; gaze processed for ${processed.length} Study record(s) (${samples.length} sample(s)).`;
   } catch (error) {
     if (target) target.textContent = `Gaze processing unavailable: ${error.message}`;
   }
@@ -89,6 +96,10 @@ function showTrial() {
     const studyId = ctx.study_ids[0];
     trial = new TrialLifecycle({ context: { experience_id: ctx.experience_id, session_id: ctx.session_id, study_id: studyId }, timingRules: config.trial_timing_rules, consentController: consent, onEvent: enqueue, onState: (state) => {
       $("#trial-state").textContent = `Trial status: ${state.state}; elapsed ${Math.round(state.elapsed_ms)} ms.`;
+      if (["completed", "aborted", "skipped"].includes(state.state)) {
+        $("#start-trial").disabled = true;
+        $("#finish-trial").disabled = true;
+      }
       if (state.state === "completed") {
         // TrialLifecycle emits its completed state before emitting the terminal
         // exposure-ended event. Defer the server submission until the current
@@ -112,13 +123,16 @@ function showTrial() {
     // session, which the server must reject as an ambiguous observation
     // window.
     trial.start(newDemoTrialId());
-    trialGeometry = geometry?.flush({ force: true }) || latestGeometry;
+    trialGeometries.clear();
+    geometries.forEach((tracker, studyId) => { const snapshot = tracker.flush({ force: true }) || latestGeometries.get(studyId); if (snapshot) trialGeometries.set(studyId, snapshot); });
+    trialGeometry = trialGeometries.get((config.gaze_study_ids ?? [])[0]) || latestGeometry;
     latestGeometry = trialGeometry || latestGeometry;
     $("#start-trial").disabled = true;
     $("#finish-trial").disabled = false;
   });
   $("#finish-trial").addEventListener("click", () => {
-    trialGeometry = geometry?.flush({ force: true }) || trialGeometry || latestGeometry;
+    geometries.forEach((tracker, studyId) => { const snapshot = tracker.flush({ force: true }) || trialGeometries.get(studyId) || latestGeometries.get(studyId); if (snapshot) trialGeometries.set(studyId, snapshot); });
+    trialGeometry = trialGeometries.get((config.gaze_study_ids ?? [])[0]) || trialGeometry || latestGeometry;
     trial.complete();
   });
 }
@@ -133,7 +147,8 @@ function showSurvey() {
       $("#survey-result").textContent = config.mode === "live"
         ? `Response ${result.submission_id} persisted successfully${result.duplicate ? " (already received)" : ""}.`
         : `Offline demo response ${payload.submission_id} remains in this page only.`;
-      interaction?.stop(); geometry?.stop();
+      interaction?.stop(); geometries.forEach((tracker) => tracker.stop()); geometry?.stop();
+      await consent.stopCamera();
       const flushResult = await queue.close(); updateQueueStatus(flushResult);
       return result;
     } catch (error) {
@@ -151,11 +166,19 @@ function startJourney(modality) {
   const ctx = context();
   enqueue(makeEnvelope("session.participation_started", { modality }));
   try {
-    geometry = createGeometryTracker({ aoiConfig: config.aoi_config, context: { experience_id: ctx.experience_id, session_id: ctx.session_id, study_id: ctx.study_ids[0] }, controller: consent, onSnapshot: (snapshot) => { latestGeometry = snapshot; const target = $("#trial-geometry"); if (target) target.textContent = `AOI geometry updated (${snapshot.rectangles.length} visible area(s)).`; } });
-    geometry.start();
+    const aoiConfigs = config.aoi_configs ?? [config.aoi_config];
+    const gazeIds = new Set(config.gaze_study_ids ?? []);
+    for (const aoiConfig of aoiConfigs) {
+      if (!gazeIds.has(aoiConfig.study_id)) continue;
+      const studyId = aoiConfig.study_id;
+      const tracker = createGeometryTracker({ aoiConfig, context: { experience_id: ctx.experience_id, session_id: ctx.session_id, study_id: studyId }, controller: consent, onSnapshot: (snapshot) => { latestGeometries.set(studyId, snapshot); if (studyId === (config.gaze_study_ids ?? [])[0]) { latestGeometry = snapshot; const target = $("#trial-geometry"); if (target) target.textContent = `AOI geometry updated (${snapshot.rectangles.length} visible area(s)).`; } } });
+      geometries.set(studyId, tracker); tracker.start();
+    }
+    geometry = geometries.get((config.gaze_study_ids ?? [])[0]) || null;
   } catch (error) { console.warn("AOI tracking could not start in this browser:", error.message); }
   try {
-    interaction = startInteractionCapture({ context: ctx, policy: { version: "demo-allowlist-1", allowed_event_types: ["interaction.click", "interaction.hover", "interaction.scroll", "page.visibility_changed"] }, controller: consent, onEvent: enqueue, allowedAoiIds: config.aoi_config.aois.map((aoi) => aoi.aoi_id), resolveAoiId: (target) => geometry?.resolveTarget(target) ?? null });
+    const allAoiIds = [...new Set(aoiConfigs.flatMap((item) => (item.aois ?? []).map((aoi) => aoi.aoi_id)))];
+    interaction = startInteractionCapture({ context: ctx, policy: { version: "demo-allowlist-1", allowed_event_types: ["interaction.click", "interaction.hover", "interaction.scroll", "page.visibility_changed"] }, controller: consent, onEvent: enqueue, allowedAoiIds: allAoiIds, resolveAoiId: (target) => { for (const tracker of geometries.values()) { const resolved = tracker.resolveTarget(target); if (resolved) return resolved; } return null; } });
   } catch (error) { console.warn("Interaction capture could not start:", error.message); }
   showTrial();
 }
@@ -191,7 +214,7 @@ async function startConsent() {
       cameraDenied: "Camera permission was denied. You can continue without gaze.", cameraUnavailable: "No usable camera is available. You can continue without gaze.", cameraUnsupported: "This browser does not support camera access. You can continue without gaze.", cameraInterrupted: "Camera capture stopped. You can retry or continue without gaze.", cameraUnplugged: "The camera was disconnected. You can retry or continue without gaze.", cameraRevoked: "Camera permission was revoked. You can continue without gaze.", providerFailed: "The gaze provider could not start. The survey remains available without gaze.", retryCamera: "Try camera again", continueWithoutGaze: "Continue without gaze", acceptCamera: "I agree to optional camera use", declineCamera: "Continue without camera",
       declinedTitle: "You declined", declinedDescription: "No participation session or research events were created.", completeTitle: "Ready for the study", completeWithCameraDescription: "Your optional camera path is active.", completeWithoutCameraDescription: "You can continue with the study without gaze data.", withdrawnDescription: "Your participation has stopped.", withdraw: "Withdraw from study", withdrawing: "Stopping collection…", withdrawn: "Participation stopped.", withdrawnAuditUnavailable: "Participation stopped; the audit signal could not be sent.", retryWithdrawalAudit: "Retry stop signal", saving: "Saving your choice…", saveFailed: "Your choice could not be saved. Please try again.",
     },
-    cameraOptions: { sessionId: config.session_bootstrap.session_id, provider, initialGeometry: { schema_version: "2.0.0", snapshot_id: "demo-initial-geometry", session_id: config.session_bootstrap.session_id, study_id: config.session_bootstrap.eligible_studies[0].study_id, captured_at: new Date().toISOString(), aoi_set_version: config.session_bootstrap.eligible_studies[0].aoi_set_version, viewport_width_px: innerWidth, viewport_height_px: innerHeight, scroll_x_px: scrollX, scroll_y_px: scrollY, zoom: visualViewport?.scale || 1, rectangles: [] }, onSample: (sample) => { if (gazeSamples.length < 250) gazeSamples.push(sample); } },
+    cameraOptions: { sessionId: config.session_bootstrap.session_id, provider, initialGeometry: (() => { const study = config.session_bootstrap.eligible_studies.find((item) => (config.gaze_study_ids ?? []).includes(item.study_id)) ?? config.session_bootstrap.eligible_studies[0]; return { schema_version: "2.0.0", snapshot_id: "demo-initial-geometry", session_id: config.session_bootstrap.session_id, study_id: study.study_id, captured_at: new Date().toISOString(), aoi_set_version: study.aoi_set_version, viewport_width_px: innerWidth, viewport_height_px: innerHeight, scroll_x_px: scrollX, scroll_y_px: scrollY, zoom: visualViewport?.scale || 1, rectangles: [] }; })(), onSample: (sample) => { if (gazeSamples.length < 250) gazeSamples.push(sample); } },
     onContinue: ({ modality }) => startJourney(modality),
   });
 }

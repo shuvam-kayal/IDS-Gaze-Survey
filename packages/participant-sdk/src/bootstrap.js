@@ -92,7 +92,7 @@ export function parseStudyConfig(value, { bootstrap, study } = {}) {
     if (!nonEmptyString(value[key])) throw new TypeError(`StudyConfig.${key} must be a non-empty string`);
   }
   if (!["draft", "active", "paused", "closed"].includes(value.status)) throw new TypeError("StudyConfig.status is invalid");
-  if (value.gaze_required !== false) throw new TypeError("StudyConfig.gaze_required must be false in v1");
+  if (typeof value.gaze_required !== "boolean") throw new TypeError("StudyConfig.gaze_required must be a boolean in v1");
   if (!record(value.survey_policy)) throw new TypeError("StudyConfig.survey_policy must be an object");
   assertKeys(value.survey_policy, ["timing", "consolidation"], [], "StudyConfig.survey_policy");
   if (!["before_exposure", "after_exposure", "after_each_trial", "batched_after_exposure"].includes(value.survey_policy.timing)) {

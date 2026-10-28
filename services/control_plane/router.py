@@ -288,6 +288,7 @@ class StudyWrite(StrictModel):
     survey_policy: dict = Field(default_factory=lambda: {"timing": "after_exposure", "consolidation": "deduplicate_by_question_id"})
     aois: list[dict] = Field(default_factory=list, max_length=500)
     questions: list[dict] = Field(default_factory=list, max_length=500)
+    gaze_required: bool = False
 
     @field_validator("name")
     @classmethod
@@ -703,7 +704,7 @@ def create_study(
     if body.experience_id != experience_id: raise HTTPException(status_code=422, detail="Experience identity mismatch")
     record = repository.save_study(None, experience_id=experience_id, name=body.name, priority=body.priority,
         eligibility_rules=body.eligibility_rules,
-        config={"schema_version": "1.0.0", "timing_rules": body.timing_rules, "survey_policy": body.survey_policy, "aois": body.aois, "questions": body.questions},
+        config={"schema_version": "1.0.0", "timing_rules": body.timing_rules, "survey_policy": body.survey_policy, "aois": body.aois, "questions": body.questions, "gaze_required": body.gaze_required},
         actor_id=principal.user_id, actor_role=principal.role.value)
     return _study_response(record)
 
@@ -721,7 +722,7 @@ def update_study(
     try:
         record = repository.save_study(study_id, experience_id=body.experience_id, name=body.name,
             priority=body.priority, eligibility_rules=body.eligibility_rules,
-            config={"schema_version": "1.0.0", "timing_rules": body.timing_rules, "survey_policy": body.survey_policy, "aois": body.aois, "questions": body.questions},
+            config={"schema_version": "1.0.0", "timing_rules": body.timing_rules, "survey_policy": body.survey_policy, "aois": body.aois, "questions": body.questions, "gaze_required": body.gaze_required},
             actor_id=principal.user_id, actor_role=principal.role.value)
     except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _study_response(record)

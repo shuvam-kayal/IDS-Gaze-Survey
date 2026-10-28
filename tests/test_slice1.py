@@ -100,3 +100,26 @@ def test_repeated_inputs_reproduce_identical_feature_record():
     first = build_non_gaze_feature_record(events, survey_completion_ratio=1.0)
     second = build_non_gaze_feature_record(list(reversed(events)), survey_completion_ratio=1.0)
     assert first == second
+
+
+def test_explicit_per_study_context_accepts_multi_study_events():
+    events = [
+        {**event, "study_ids": ["study-a", "study-b"]}
+        for event in load_events()
+    ]
+    study_a = build_non_gaze_feature_record(
+        events, experience_id=events[0]["experience_id"],
+        session_id=events[0]["session_id"], study_id="study-a",
+    )
+    study_b = build_non_gaze_feature_record(
+        events, experience_id=events[0]["experience_id"],
+        session_id=events[0]["session_id"], study_id="study-b",
+    )
+    assert study_a["study_id"] == "study-a"
+    assert study_b["study_id"] == "study-b"
+    assert study_a["feature_record_id"] != study_b["feature_record_id"]
+    with pytest.raises(ValueError, match="do not include explicit FeatureRecord study_id"):
+        build_non_gaze_feature_record(
+            events, experience_id=events[0]["experience_id"],
+            session_id=events[0]["session_id"], study_id="study-c",
+        )

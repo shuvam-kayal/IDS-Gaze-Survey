@@ -49,6 +49,7 @@ test("validates StudyConfig timing and the separate session-scoped SurveyPlan", 
     survey_policy: { timing: "after_each_trial", consolidation: "deduplicate_by_question_id" }, gaze_required: false,
   };
   assert.equal(parseStudyConfig(studyConfig, { bootstrap: parsed, study: parsed.eligible_studies[0] }).survey_policy.timing, "after_each_trial");
+  assert.equal(parseStudyConfig({ ...studyConfig, gaze_required: true }, { bootstrap: parsed, study: parsed.eligible_studies[0] }).gaze_required, true);
   assert.throws(() => parseStudyConfig({ ...studyConfig, config_version: "stale-version" }, { bootstrap: parsed, study: parsed.eligible_studies[0] }), /does not match/);
   const surveyPlan = {
     schema_version: "1.0.0", survey_plan_id: "survey-plan-1", session_id: parsed.session_id,

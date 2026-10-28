@@ -72,7 +72,7 @@
       }
     },
     "gaze_required": {
-      "const": false
+      "type": "boolean"
     },
     "priority": {
       "type": "integer",

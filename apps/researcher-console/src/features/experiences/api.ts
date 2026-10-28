@@ -30,7 +30,7 @@ export interface StudyRecord {
 export interface StudyInput {
   experience_id: string; name: string; priority: number; eligibility_rules: Record<string, unknown>;
   timing_rules: Record<string, unknown>; survey_policy: { timing: string; consolidation: string };
-  aois: Array<Record<string, unknown>>; questions: Array<Record<string, unknown>>;
+  aois: Array<Record<string, unknown>>; questions: Array<Record<string, unknown>>; gaze_required: boolean;
 }
 
 export class ResearcherApi {

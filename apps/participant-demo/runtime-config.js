@@ -26,7 +26,7 @@ function timingRulesFor(details, studyId) {
   };
 }
 
-function consentPolicy(bootstrap) {
+function consentPolicy(bootstrap, gazeRequired) {
   const hostText = globalThis.IDS_LIVE_CONSENT_POLICY_TEXT;
   const researchText = nonEmpty(hostText?.research) ? hostText.research :
     `Participation is voluntary. You may stop at any time. Consent notice version: ${bootstrap.privacy_notice_version}.`;
@@ -34,7 +34,7 @@ function consentPolicy(bootstrap) {
     `Camera use is optional. You may continue without gaze data. Camera consent version: ${bootstrap.research_consent_version}.`;
   return {
     research: { version: bootstrap.research_consent_version, text: researchText },
-    camera: { version: bootstrap.research_consent_version, offered: bootstrap.camera_capture_supported, text: cameraText },
+    camera: { version: bootstrap.research_consent_version, offered: bootstrap.camera_capture_supported && gazeRequired, text: cameraText },
   };
 }
 
@@ -63,19 +63,23 @@ export async function loadLiveConfig({ apiBaseUrl, experienceId, fetchImpl = glo
   const study = configuration.bootstrap.eligible_studies[0];
   if (!study) throw new Error("The server assigned no eligible studies");
   const index = configuration.bootstrap.eligible_studies.findIndex((item) => item.study_id === study.study_id);
+  const gazeStudyIds = configuration.studyConfigs.filter((item) => item.gaze_required).map((item) => item.study_id);
   return {
     mode: "live",
     api_base_url: base,
     event_ingestion_url: joinUrl(base, "/v1/events"),
     session_bootstrap: configuration.bootstrap,
     study_config: configuration.studyConfigs[index],
+    study_configs: configuration.studyConfigs,
     question_config: configuration.questionConfigs[index],
     question_configs: configuration.questionConfigs,
     survey_plan: configuration.surveyPlan,
     survey_plan_details: configuration.surveyPlanDetails,
     trial_timing_rules: timingRulesFor(configuration.surveyPlanDetails, study.study_id),
     aoi_config: aoiConfigs[index],
-    consent_policy: consentPolicy(configuration.bootstrap),
+    aoi_configs: aoiConfigs,
+    gaze_study_ids: gazeStudyIds,
+    consent_policy: consentPolicy(configuration.bootstrap, gazeStudyIds.length > 0),
   };
 }
 
@@ -89,7 +93,9 @@ export async function loadOfflineConfig(fetchImpl = globalThis.fetch) {
   const bootstrap = parseSessionBootstrap(value.session_bootstrap);
   const study = parseStudyConfig(value.study_config, { bootstrap, study: bootstrap.eligible_studies[0] });
   const surveyPlan = parseSurveyPlan(value.survey_plan, { bootstrap });
-  return { ...value, mode: "offline", session_bootstrap: bootstrap, study_config: study, survey_plan: surveyPlan };
+  const studyConfigs = Array.isArray(value.study_configs) ? value.study_configs.map((item) => parseStudyConfig(item, { bootstrap })) : [study];
+  const gazeStudyIds = studyConfigs.filter((item) => item.gaze_required).map((item) => item.study_id);
+  return { ...value, mode: "offline", session_bootstrap: bootstrap, study_config: study, study_configs: studyConfigs, survey_plan: surveyPlan, gaze_study_ids: gazeStudyIds, consent_policy: consentPolicy(bootstrap, gazeStudyIds.length > 0) };
 }
 
 export function runtimeSelection(location = globalThis.location, globals = globalThis) {

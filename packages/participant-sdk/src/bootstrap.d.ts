@@ -14,7 +14,7 @@ export interface StudyConfig {
     timing: "before_exposure" | "after_exposure" | "after_each_trial" | "batched_after_exposure";
     consolidation: "deduplicate_by_question_id" | "keep_study_scoped";
   };
-  gaze_required: false;
+  gaze_required: boolean;
   priority?: number;
 }
 

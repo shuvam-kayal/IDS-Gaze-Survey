@@ -43,6 +43,19 @@ def _context_from_events(events: list[dict[str, Any]]) -> tuple[str, str, str]:
     return experience_id, session_id, study_ids[0]
 
 
+def _validate_explicit_context(
+    events: list[dict[str, Any]], *, experience_id: str, session_id: str, study_id: str
+) -> None:
+    """Validate one per-Study record against multi-Study event envelopes."""
+    for event in events:
+        if event["experience_id"] != experience_id:
+            raise ValueError("event experience_id does not match explicit FeatureRecord context")
+        if event["session_id"] != session_id:
+            raise ValueError("event session_id does not match explicit FeatureRecord context")
+        if study_id not in event["study_ids"]:
+            raise ValueError("event study_ids do not include explicit FeatureRecord study_id")
+
+
 def build_non_gaze_feature_record(
     events: list[dict[str, Any]],
     *,
@@ -71,17 +84,25 @@ def build_non_gaze_feature_record(
 
     unique_events = deduplicate_events(events)
     if unique_events:
-        inferred_experience, inferred_session, inferred_study = _context_from_events(
-            unique_events
-        )
         supplied = (experience_id, session_id, study_id)
-        inferred = (inferred_experience, inferred_session, inferred_study)
-        for name, actual, expected in zip(
-            ("experience_id", "session_id", "study_id"), supplied, inferred
-        ):
-            if actual is not None and actual != expected:
-                raise ValueError(f"{name} does not match event context")
-        experience_id, session_id, study_id = inferred
+        if all(value is not None for value in supplied):
+            _validate_explicit_context(
+                unique_events,
+                experience_id=experience_id,
+                session_id=session_id,
+                study_id=study_id,
+            )
+        else:
+            inferred_experience, inferred_session, inferred_study = _context_from_events(
+                unique_events
+            )
+            inferred = (inferred_experience, inferred_session, inferred_study)
+            for name, actual, expected in zip(
+                ("experience_id", "session_id", "study_id"), supplied, inferred
+            ):
+                if actual is not None and actual != expected:
+                    raise ValueError(f"{name} does not match event context")
+            experience_id, session_id, study_id = inferred
     elif not all(
         isinstance(value, str) and value for value in (experience_id, study_id, session_id)
     ):

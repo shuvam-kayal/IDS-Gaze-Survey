@@ -149,19 +149,32 @@ def test_survey_submission_route_binds_session_origin_and_durable_callback():
             return {**payload, "duplicate": False}
 
         def get_assignment(self, session_id):
-            return {"session_id": session_id, "experience_id": "experience-a", "assignments": []}
+            return {"session_id": session_id, "experience_id": "experience-a", "assignments": [
+                {"study_id": "study-a", "study_config": {"config_version": "config-a", "aoi_set_version": "aoi-a", "question_config": {"questions": []}}},
+                {"study_id": "study-b", "study_config": {"config_version": "config-b", "aoi_set_version": "aoi-b", "question_config": {"questions": []}}},
+            ]}
 
     class Telemetry:
+        def __init__(self):
+            self.features = []
+
         def list_feature_records(self, _session_id, *, study_id=None):
             return []
 
         def list_events(self, _session_id, *, study_id=None):
-            return []
+            return [{
+                "schema_version": "1.0.0", "event_id": "event-multi-study",
+                "experience_id": "experience-a", "study_ids": ["study-a", "study-b"],
+                "session_id": "session-a", "event_type": "interaction.click",
+                "occurred_at": "2026-10-28T10:00:00Z", "payload": {},
+            }]
 
         def persist_feature_record(self, record):
+            self.features.append(record)
             return record
 
     repository = SurveyRepository()
+    telemetry = Telemetry()
     body = SurveySubmissionRequest(
         submission_id="submission-1", session_id="session-a", responses=[{
             "response_id": "response-1", "submission_id": "submission-1",
@@ -171,10 +184,11 @@ def test_survey_submission_route_binds_session_origin_and_durable_callback():
         }],
     )
     result = persist_participant_survey_submission(
-        "session-a", body, Response(), repository, Telemetry(), "credential-a", "http://localhost:5173"
+        "session-a", body, Response(), repository, telemetry, "credential-a", "http://localhost:5173"
     )
     assert result.submission_id == "submission-1"
     assert repository.saved[0]["session_id"] == "session-a"
+    assert {record["study_id"] for record in telemetry.features} == {"study-a", "study-b"}
     repository.list_survey_submissions = lambda session_id: [repository.saved[0]]
     listed = list_participant_survey_submissions(
         "session-a", Response(), repository, "credential-a", "http://localhost:5173"
@@ -189,6 +203,6 @@ def test_survey_submission_route_binds_session_origin_and_durable_callback():
     with pytest.raises(HTTPException) as mismatch:
         persist_participant_survey_submission(
             "session-a", body.model_copy(update={"session_id": "session-b"}), Response(),
-            repository, Telemetry(), "credential-a", "http://localhost:5173",
+            repository, telemetry, "credential-a", "http://localhost:5173",
         )
     assert mismatch.value.status_code == 422

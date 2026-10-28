@@ -118,7 +118,7 @@ class MemoryControlRepository:
                              "study_id": study_id, "experience_id": record["experience_id"],
                              "status": "active", "aoi_set_version": aoi_version, "question_set_version": question_version,
                              "survey_policy": record["config"].get("survey_policy", {"timing": "after_exposure", "consolidation": "deduplicate_by_question_id"}),
-                             "gaze_required": False, "priority": record["priority"],
+                             "gaze_required": bool(record["config"].get("gaze_required", False)), "priority": record["priority"],
                              "aoi_config": {"schema_version": "1.0.0", "config_version": aoi_version, "items": record["config"].get("aois", [])},
                              "question_config": {"schema_version": "1.0.0", "study_id": study_id,
                                                   "question_set_version": question_version, "questions": record["config"].get("questions", [])}}
@@ -398,11 +398,12 @@ def _published_experience(client, headers, name="Multi-study experience"):
     return experience
 
 
-def _study_body(experience_id, name, priority, eligibility, marker):
+def _study_body(experience_id, name, priority, eligibility, marker, gaze_required=False):
     return {"experience_id": experience_id, "name": name, "priority": priority,
         "eligibility_rules": eligibility, "timing_rules": {"duration_ms": marker},
         "aois": [{"aoi_id": f"aoi-{marker}", "name": f"Area {marker}", "selector": f"#area-{marker}"}],
-        "questions": [{"question_id": f"q-{marker}", "prompt": f"Question {marker}", "version": "1", "type": "single_choice", "required": True, "choices": ["yes", "no"]}]}
+        "questions": [{"question_id": f"q-{marker}", "prompt": f"Question {marker}", "version": "1", "type": "single_choice", "required": True, "choices": ["yes", "no"]}],
+        "gaze_required": gaze_required}
 
 
 def test_experience_can_host_independent_studies_and_pins_each_published_config(control_client):
@@ -431,6 +432,20 @@ def test_experience_can_host_independent_studies_and_pins_each_published_config(
     assert pinned_first["config"]["question_config"]["question_set_version"].startswith("question-config-v1:")
     assert client.put(f"/v1/control/studies/{first['study_id']}", headers=headers,
         json=_study_body(exp_id, "Mutated live", 1, {"all": []}, 99)).status_code == 409
+
+
+def test_published_study_preserves_per_study_gaze_requirement(control_client):
+    client, _ = control_client
+    session = sign_in(client, "researcher")
+    headers = csrf(session)
+    experience = _published_experience(client, headers)
+    exp_id = experience["experience_id"]
+    created = client.post(f"/v1/control/experiences/{exp_id}/studies", headers=headers,
+        json=_study_body(exp_id, "Gaze study", 10, {"all": []}, 31, gaze_required=True))
+    assert created.status_code == 201
+    published = client.post(f"/v1/control/studies/{created.json()['study_id']}/publish", headers=headers)
+    assert published.status_code == 200
+    assert published.json()["config"]["gaze_required"] is True
 
 
 def test_assignment_is_deterministic_excludes_drafts_and_is_idempotent(control_client):
