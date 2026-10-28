@@ -12,6 +12,9 @@ from services.control_plane.store import (
     ControlPlaneRepository,
     ParticipantConsentRecord,
     ParticipantSessionRecord,
+    StudyAssignmentRecord,
+    SurveySubmissionRecord,
+    SurveyResponseRecord,
 )
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -25,7 +28,7 @@ def repository():
     try:
         with engine.connect() as connection:
             connection.exec_driver_sql("SELECT 1")
-        if not {"participant_sessions", "participant_consent_records"}.issubset(set(inspect(engine).get_table_names())):
+        if not {"participant_sessions", "participant_consent_records", "participant_survey_submissions", "participant_survey_responses"}.issubset(set(inspect(engine).get_table_names())):
             pytest.skip("Blocker 3A migration has not been applied to this test database")
     except SQLAlchemyError as exc:  # pragma: no cover - environment-dependent
         pytest.skip(f"PostgreSQL unavailable: {exc}")
@@ -86,4 +89,74 @@ def test_expired_server_session_credential_fails_closed(repository):
         assert repository.verify_participant_session(session_id=session_id, credential=credential) is None
     finally:
         with repository.sessions.begin() as db:
+            db.execute(delete(ParticipantSessionRecord).where(ParticipantSessionRecord.session_id == session_id))
+
+
+def test_survey_submission_is_durable_idempotent_and_pinned_to_assignment(repository):
+    session_id = f"survey-session-{uuid4()}"
+    study_id = f"survey-study-{uuid4()}"
+    issued = datetime.now(UTC)
+    expires = issued + timedelta(hours=1)
+    assignment = {
+        "study_id": study_id,
+        "config_version": "study-config-v1",
+        "study_config": {
+            "config_version": "study-config-v1",
+            "aoi_set_version": "aoi-v1",
+            "question_set_version": "question-v1",
+            "question_config": {
+                "questions": [{
+                    "question_id": "q1", "answer_type": "free_text",
+                    "required": True, "options": [],
+                }],
+            },
+        },
+    }
+    _, credential = repository.create_participant_session(
+        session_id=session_id, experience_id="survey-experience", issued_at=issued, expires_at=expires
+    )
+    with repository.sessions.begin() as db:
+        db.add(StudyAssignmentRecord(
+            session_id=session_id, experience_id="survey-experience",
+            assigned_studies=[assignment], assigned_at=issued,
+        ))
+    repository.record_participant_consent(
+        session_id=session_id, scope="research_participation", decision="accepted",
+        policy_version="research-v1", occurred_at=issued + timedelta(seconds=1),
+    )
+    payload = {
+        "submission_id": "submission-1", "session_id": session_id,
+        "responses": [{
+            "response_id": "response-1", "submission_id": "submission-1",
+            "experience_id": "survey-experience", "session_id": session_id,
+            "participant_id": None, "study_id": study_id, "question_id": "q1",
+            "question_set_version": "question-v1", "answer_type": "free_text", "answer": "hello",
+        }],
+    }
+    try:
+        first = repository.persist_survey_submission(payload)
+        retry = repository.persist_survey_submission(payload)
+        assert first["duplicate"] is False
+        assert retry["duplicate"] is True
+        assert repository.list_survey_submissions(session_id) == [{
+            "submission_id": "submission-1", "session_id": session_id,
+            "responses": [first["responses"][0]],
+        }]
+        with pytest.raises(ValueError, match="question-set version"):
+            repository.persist_survey_submission({
+                **payload,
+                "submission_id": "submission-2",
+                "responses": [{**payload["responses"][0], "submission_id": "submission-2", "question_set_version": "wrong"}],
+            })
+        with pytest.raises(ValueError, match="identity conflict"):
+            repository.persist_survey_submission({
+                **payload,
+                "responses": [{**payload["responses"][0], "answer": "changed"}],
+            })
+    finally:
+        with repository.sessions.begin() as db:
+            db.execute(delete(SurveyResponseRecord).where(SurveyResponseRecord.session_id == session_id))
+            db.execute(delete(SurveySubmissionRecord).where(SurveySubmissionRecord.session_id == session_id))
+            db.execute(delete(ParticipantConsentRecord).where(ParticipantConsentRecord.session_id == session_id))
+            db.execute(delete(StudyAssignmentRecord).where(StudyAssignmentRecord.session_id == session_id))
             db.execute(delete(ParticipantSessionRecord).where(ParticipantSessionRecord.session_id == session_id))

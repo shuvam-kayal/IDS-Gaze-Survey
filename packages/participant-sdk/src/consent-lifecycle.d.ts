@@ -58,6 +58,7 @@ export class ConsentLifecycle {
     onStatus?: (status: ProviderStatus, reason?: string) => void;
     onCameraStatus?: (state: { status: CameraLifecycleStatus; modality: "gaze_and_non_gaze" | "non_gaze_only"; reason?: string; recoverable: boolean }) => void;
   }): Promise<{ modality: "gaze_and_non_gaze" | "non_gaze_only"; permission: CameraPermission; status: CameraLifecycleStatus; reason: string | null; error?: unknown; recoverable?: boolean }>;
+  stopCamera(): Promise<void>;
   withdraw(): Promise<ConsentState & { cleanup_complete: boolean; audit_status: ConsentState["withdrawal"]["audit_status"] }>;
   shutdown(): Promise<void>;
 }

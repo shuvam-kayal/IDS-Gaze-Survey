@@ -4,7 +4,7 @@ This dependency-free browser demo connects the participant SDK invitation, separ
 
 ## Run it
 
-From this directory, run `python3 server.py` (or `npm run dev` if npm is available), then open `http://localhost:5173/?experience_id=<published-experience-id>`. The default is live P2 mode: after the participant accepts the invitation, the demo POSTs to `/v1/sessions/bootstrap`, then fetches the server-pinned StudyConfig, AOIConfig, QuestionConfig, SurveyPlan and SurveyPlan details. Start the repository API with `docker compose up --build` in the repository root. The browser sends interaction events to the existing `http://localhost:8000/v1/events` route; it does not send gaze samples in this slice.
+From this directory, run `python3 server.py` (or `npm run dev` if npm is available), then open `http://localhost:5173/?experience_id=<published-experience-id>`. The default is live P2 mode: after the participant accepts the invitation, the demo POSTs to `/v1/sessions/bootstrap`, then fetches every server-pinned StudyConfig, AOIConfig, QuestionConfig, SurveyPlan and SurveyPlan details. Start the repository API with `docker compose up --build` in the repository root. The browser sends interaction events to `/v1/events`. For each assigned Study whose published `StudyConfig.gaze_required` is `true`, it maintains Study-scoped geometry and trial lifecycle context and submits authorized gaze observations to that Study. Studies without that flag do not consume gaze observations.
 
 To include the real local WebGazer provider in the participant page, build it before starting the page:
 
@@ -12,12 +12,18 @@ To include the real local WebGazer provider in the participant page, build it be
 npm run build:participant-demo --prefix .\packages\gaze-provider-webgazer
 ```
 
-Without that build, the participant page deliberately remains usable in non-gaze mode. With it, the page loads the pinned WebGazer adapter after explicit camera consent; it still requires trusted server-side geometry and lifecycle state before gaze results can be accepted.
+Without that build, or when camera permission/provider startup is denied or interrupted, the participant page remains usable in non-gaze mode. With it, the page loads the pinned WebGazer adapter after explicit camera consent; it still requires trusted server-side geometry and Study-scoped lifecycle state before gaze results can be accepted. A Study configured with `gaze_required: true` falls back to non-gaze FeatureRecord generation when usable gaze is unavailable; it is never given fabricated gaze data or AOI geometry.
 
 For an explicitly offline fixture-only run, use `http://localhost:5173/?mode=offline`. Offline mode is never selected automatically and does not create a live P2 session. The live loader fails visibly if the Experience ID is missing, the origin is unauthorized, a resource is unavailable, or a pinned resource does not validate; it does not fall back to `demo-config.json`.
 
-The researcher control plane exposes the contract v1 session-bootstrap and pinned Study/AOI/Question config resources under `/v1/sessions`. Consent records and survey answers stay in page memory, and survey persistence is not claimed. The event queue is bounded in memory and retains events through temporary network failures while this page remains open. It drops pending research events on withdrawal and does not flush them as part of withdrawal.
+The researcher control plane exposes the contract v1 session-bootstrap and pinned Study/AOI/Question config resources under `/v1/sessions`. Consent records and completed survey answers are persisted through authenticated participant-session routes; the live demo reports an error and keeps the submission retryable if the API does not accept it. Offline mode remains explicitly page-only. The event queue is bounded in memory and retains events through temporary network failures while this page remains open. It drops pending research events on withdrawal and does not flush them as part of withdrawal.
 
-Camera access is requested only after both separate consent choices. The demo accepts a P3 `ProviderAdapter` through `window.IDS_GAZE_PROVIDER`; it does not bundle WebGazer or implement gaze processing. Without that adapter, the camera flow reports a provider fallback and the non-gaze journey continues. To supply the adapter, load its browser bundle before `main.js`. The SDK passes explicit consent, session, geometry, and callbacks; the provider owns camera acquisition and cleanup through its supported API.
+After a live survey submission succeeds, the demo marks the current browser
+tab as completed. Its next refresh requests a fresh participant session, so a
+new trial produces another FeatureRecord under the same feature-set version.
+Refreshing before completion resumes the existing session. Existing records
+are never overwritten.
+
+Camera access is requested only after both separate consent choices and only when at least one assigned Study requires gaze. The demo accepts a P3 `ProviderAdapter` through `window.IDS_GAZE_PROVIDER`; it does not bundle WebGazer or implement gaze processing. Without that adapter, the camera flow reports a provider fallback and the non-gaze journey continues. To supply the adapter, load its browser bundle before `main.js`. The SDK passes explicit consent, session, Study-scoped geometry, and callbacks; the provider owns camera acquisition and cleanup through its supported API.
 
 The live trial timing is derived from the selected study's pinned survey-plan details; the offline fixture uses its checked-in timing rule. The survey is rendered from the server-pinned `QuestionConfig` and `SurveyPlan` in live mode. Interaction capture excludes form and editable fields and uses only the fixture's explicit event allow-list. The current P2 bootstrap exposes consent policy versions, not policy text; the demo displays neutral local explanatory text while preserving those server versions, so a production participant surface still needs its approved consent-content integration.

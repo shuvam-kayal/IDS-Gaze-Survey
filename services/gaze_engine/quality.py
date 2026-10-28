@@ -13,6 +13,7 @@ from services.telemetry.ingestion import _parse_utc_timestamp
 MIN_VALID_SAMPLES = 3
 MIN_VALID_FRACTION = 0.5
 MIN_MEAN_CONFIDENCE = 0.5
+USABLE_UNVERIFIED = "usable_unverified"
 CALIBRATION_STATUSES = {"pending", "passed", "failed", "not_required", "low_quality"}
 
 
@@ -107,8 +108,10 @@ def evaluate_gaze_quality(records: list[dict[str, Any]]) -> GazeQualityAssessmen
 
     A session is ``usable`` when it has at least three valid samples, at least
     half of all samples are valid, and available valid-sample confidence has a
-    mean of at least 0.5. Thresholds are inclusive. Missing confidence makes
-    the session ``low_quality`` but never changes a sample's validity.
+    mean of at least 0.5. Missing provider confidence is reported as
+    ``usable_unverified``: valid coordinates remain usable, but no numeric
+    confidence claim is made. Explicit low confidence and invalid samples
+    still fail the quality gate.
     """
 
     seen: set[str] = set()
@@ -149,8 +152,8 @@ def evaluate_gaze_quality(records: list[dict[str, Any]]) -> GazeQualityAssessmen
         missingness.add("gaze.low_quality")
         flags.add("quality.low_valid_fraction")
     elif missing_valid_confidence:
-        quality_status = "low_quality"
-        missingness.add("gaze.low_quality")
+        quality_status = USABLE_UNVERIFIED
+        missingness.add("gaze.quality_unverified")
         flags.add("quality.confidence_missing")
     elif mean_confidence < MIN_MEAN_CONFIDENCE:
         quality_status = "low_quality"

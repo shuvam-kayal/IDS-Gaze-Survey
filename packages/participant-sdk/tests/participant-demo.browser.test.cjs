@@ -55,7 +55,7 @@ test("participant demo completes decline and non-gaze study journeys without bro
     await page.getByRole("button", { name: "Finish trial" }).click();
     await page.getByRole("radio", { name: "Very clear" }).check();
     await page.getByRole("button", { name: "Submit sample answers" }).click();
-    await page.getByText(/saved in this page only/).waitFor();
+    await page.getByText(/Offline demo response .* remains in this page only/).waitFor();
     await page.waitForTimeout(100);
     assert.deepEqual(errors, []);
   } catch (error) {

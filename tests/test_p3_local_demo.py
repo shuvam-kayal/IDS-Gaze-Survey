@@ -4,6 +4,7 @@ from datetime import timedelta
 import pytest
 
 import services.api.app as api
+from services.feature_engine.session_processing import persist_non_gaze_feature_records
 
 
 class DemoRepository:
@@ -93,3 +94,46 @@ def test_persistence_failure_is_controlled_and_retry_recovers(demo):
     assert recovery.status_code == 202
     assert len(repository.associations) == 1
     assert len(repository.features) == 1
+
+
+def test_session_completion_creates_one_non_gaze_record_and_never_duplicates_gaze():
+    class SessionRepository:
+        def __init__(self):
+            self.events = [{
+                "schema_version": "1.0.0", "event_id": "event-1", "experience_id": "experience-1",
+                "session_id": "session-1", "study_ids": ["study-1"],
+                "event_type": "interaction.click", "occurred_at": "2026-10-28T10:00:00Z", "payload": {},
+            }]
+            self.features = []
+
+        def list_feature_records(self, session_id, *, study_id=None):
+            return [row for row in self.features if row["session_id"] == session_id and row["study_id"] == study_id]
+
+        def list_events(self, session_id, *, study_id=None):
+            return [row for row in self.events if row["session_id"] == session_id and study_id in row["study_ids"]]
+
+        def persist_feature_record(self, record):
+            self.features.append(record)
+            return record
+
+    repository = SessionRepository()
+    assignments = [{
+        "study_id": "study-1",
+        "study_config": {"config_version": "config-1", "aoi_set_version": "aoi-1"},
+    }]
+    first = persist_non_gaze_feature_records(
+        session_id="session-1", experience_id="experience-1", assignments=assignments,
+        telemetry_repository=repository, survey_completion_ratios={"study-1": 1.0},
+    )
+    second = persist_non_gaze_feature_records(
+        session_id="session-1", experience_id="experience-1", assignments=assignments,
+        telemetry_repository=repository, survey_completion_ratios={"study-1": 1.0},
+    )
+    assert len(first) == 1 and not second
+    assert first[0]["modality"] == "non_gaze_only"
+    assert first[0]["features"]["interaction.click_count"] == 1
+    repository.features.append({"feature_record_id": "gaze-record", "session_id": "session-1", "study_id": "study-1"})
+    assert not persist_non_gaze_feature_records(
+        session_id="session-1", experience_id="experience-1", assignments=assignments,
+        telemetry_repository=repository,
+    )

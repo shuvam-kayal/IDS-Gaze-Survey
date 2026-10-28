@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, create_engine, select
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Mapped, mapped_column, sessionmaker
@@ -138,6 +138,42 @@ class ParticipantConsentRecord(Base):
     policy_version: Mapped[str] = mapped_column(String(255), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SurveyResponseRecord(Base):
+    """One durable answer from an authenticated participant submission."""
+
+    __tablename__ = "participant_survey_responses"
+    __table_args__ = (
+        UniqueConstraint("session_id", "response_id", name="uq_survey_response_session_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    response_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    submission_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    experience_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    session_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    study_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    question_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    question_set_version: Mapped[str] = mapped_column(String(255), nullable=False)
+    answer_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    answer: Mapped[Any] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SurveySubmissionRecord(Base):
+    """Durable submission identity, including submissions with no optional answers."""
+
+    __tablename__ = "participant_survey_submissions"
+    __table_args__ = (
+        UniqueConstraint("session_id", "submission_id", name="uq_survey_submission_session_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    submission_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    experience_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    session_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class ControlPlaneRepository:
@@ -320,7 +356,7 @@ class ControlPlaneRepository:
                           "status": "active", "aoi_set_version": aoi_version,
                           "question_set_version": question_version,
                           "survey_policy": row.config.get("survey_policy", {"timing": "after_exposure", "consolidation": "deduplicate_by_question_id"}),
-                          "gaze_required": False, "priority": row.priority,
+                          "gaze_required": bool(row.config.get("gaze_required", False)), "priority": row.priority,
                           "aoi_config": {"schema_version": "1.0.0", "config_version": aoi_version,
                                          "items": row.config.get("aois", [])},
                           "question_config": {"schema_version": "1.0.0", "study_id": row.study_id,
@@ -547,6 +583,176 @@ class ControlPlaneRepository:
                  "policy_version": row.policy_version, "occurred_at": row.occurred_at,
                  "updated_at": row.updated_at} for row in records
             ]}
+
+    @staticmethod
+    def _survey_question_map(assignment: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        config = assignment.get("study_config")
+        question_config = config.get("question_config") if isinstance(config, dict) else None
+        questions = (question_config.get("questions", question_config.get("items", []))
+                     if isinstance(question_config, dict) else None)
+        if not isinstance(questions, list):
+            raise ValueError("assigned Study question configuration is unavailable")
+        result = {}
+        for question in questions:
+            if isinstance(question, dict) and isinstance(question.get("question_id"), str):
+                result[question["question_id"]] = question
+        return result
+
+    @staticmethod
+    def _validate_survey_answer(question: dict[str, Any], answer: Any) -> None:
+        answer_type = question.get("answer_type")
+        options = {item.get("option_id") for item in question.get("options", []) if isinstance(item, dict)}
+        if answer_type in {"single_choice", "scale"}:
+            if not isinstance(answer, str) or answer not in options:
+                raise ValueError("survey answer does not match the pinned option set")
+        elif answer_type == "multi_choice":
+            if (not isinstance(answer, list) or not answer or
+                    any(not isinstance(item, str) or item not in options for item in answer) or
+                    len(set(answer)) != len(answer)):
+                raise ValueError("survey answer does not match the pinned option set")
+        elif answer_type == "boolean":
+            if not isinstance(answer, bool):
+                raise ValueError("survey boolean answer is invalid")
+        elif answer_type == "free_text":
+            if not isinstance(answer, str):
+                raise ValueError("survey free-text answer is invalid")
+        else:
+            raise ValueError("survey answer type is unsupported")
+
+    @staticmethod
+    def _survey_row_value(row: SurveyResponseRecord) -> dict[str, Any]:
+        return {
+            "response_id": row.response_id,
+            "submission_id": row.submission_id,
+            "experience_id": row.experience_id,
+            "session_id": row.session_id,
+            "study_id": row.study_id,
+            "question_id": row.question_id,
+            "question_set_version": row.question_set_version,
+            "answer_type": row.answer_type,
+            "answer": row.answer,
+        }
+
+    def persist_survey_submission(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Validate and durably persist one authorized SDK SurveySubmission."""
+        required = {"submission_id", "session_id", "responses"}
+        if not isinstance(payload, dict) or set(payload) != required:
+            raise ValueError("survey submission has invalid fields")
+        submission_id, session_id, responses = payload["submission_id"], payload["session_id"], payload["responses"]
+        if (not isinstance(submission_id, str) or not submission_id.strip() or len(submission_id) > 255 or
+                not isinstance(session_id, str) or not session_id.strip() or len(session_id) > 255):
+            raise ValueError("survey submission identity is invalid")
+        if not isinstance(responses, list):
+            raise ValueError("survey submission responses must be an array")
+
+        with self.sessions.begin() as db:
+            session = db.get(ParticipantSessionRecord, session_id)
+            if session is None or session.status != "open" or session.expires_at <= utc_now():
+                raise ValueError("participant session is not accepting survey responses")
+            research = db.get(ParticipantConsentRecord, (session_id, "research_participation"))
+            if research is None or research.decision != "accepted":
+                raise ValueError("research participation consent is required")
+            assignment_row = db.get(StudyAssignmentRecord, session_id)
+            if assignment_row is None or assignment_row.experience_id != session.experience_id:
+                raise ValueError("participant Study assignment is unavailable")
+
+            assignments = {item.get("study_id"): item for item in assignment_row.assigned_studies if isinstance(item, dict)}
+            normalized: list[dict[str, Any]] = []
+            seen_response_ids: set[str] = set()
+            question_ids_by_study: dict[str, set[str]] = {}
+            for response in responses:
+                if not isinstance(response, dict):
+                    raise ValueError("survey response must be an object")
+                allowed = {"response_id", "submission_id", "experience_id", "session_id", "participant_id", "study_id", "question_id", "question_set_version", "answer_type", "answer"}
+                if set(response) - allowed or not {"response_id", "submission_id", "experience_id", "session_id", "study_id", "question_id", "question_set_version", "answer_type", "answer"}.issubset(response):
+                    raise ValueError("survey response has invalid fields")
+                if response.get("submission_id") != submission_id or response.get("session_id") != session_id:
+                    raise ValueError("survey response does not match submission session")
+                if response.get("experience_id") != session.experience_id:
+                    raise ValueError("survey response does not match session Experience")
+                if response.get("participant_id") is not None:
+                    raise ValueError("participant_id must be server-assigned")
+                response_id = response.get("response_id")
+                if not isinstance(response_id, str) or not response_id.strip() or len(response_id) > 255 or response_id in seen_response_ids:
+                    raise ValueError("survey response_id is invalid or duplicated")
+                seen_response_ids.add(response_id)
+                study_id = response.get("study_id")
+                assignment = assignments.get(study_id)
+                if assignment is None:
+                    raise ValueError("survey response Study is not assigned to this session")
+                config = assignment.get("study_config", {})
+                question_version = config.get("question_set_version")
+                if response.get("question_set_version") != question_version:
+                    raise ValueError("survey response question-set version does not match the pinned Study")
+                question = self._survey_question_map(assignment).get(response.get("question_id"))
+                if question is None or response.get("answer_type") != question.get("answer_type"):
+                    raise ValueError("survey response question is not in the pinned Study config")
+                self._validate_survey_answer(question, response.get("answer"))
+                question_ids_by_study.setdefault(study_id, set()).add(response["question_id"])
+                normalized.append({key: response[key] for key in ("response_id", "submission_id", "experience_id", "session_id", "study_id", "question_id", "question_set_version", "answer_type", "answer")})
+
+            answered_question_ids = {item["question_id"] for item in normalized}
+            for study_id, assignment in assignments.items():
+                questions = self._survey_question_map(assignment)
+                for question_id, question in questions.items():
+                    if question.get("required") is not True or question_id in question_ids_by_study.get(study_id, set()):
+                        continue
+                    policy = assignment.get("study_config", {}).get("survey_policy", {})
+                    if policy.get("consolidation") != "deduplicate_by_question_id":
+                        raise ValueError("survey submission is missing a required answer")
+                    semantic = {key: value for key, value in question.items() if key not in {"version", "order"}}
+                    shared_required = any(
+                        question_id in other_questions and
+                        {key: value for key, value in other_questions[question_id].items() if key not in {"version", "order"}} == semantic
+                        for other_id, other_assignment in assignments.items()
+                        if other_id != study_id
+                        for other_questions in [self._survey_question_map(other_assignment)]
+                    )
+                    if not shared_required or question_id not in answered_question_ids:
+                        raise ValueError("survey submission is missing a required answer")
+
+            normalized.sort(key=lambda item: item["response_id"])
+            submission_row = db.scalar(select(SurveySubmissionRecord).where(
+                SurveySubmissionRecord.session_id == session_id,
+                SurveySubmissionRecord.submission_id == submission_id,
+            ))
+            existing = db.scalars(select(SurveyResponseRecord).where(
+                SurveyResponseRecord.session_id == session_id,
+                SurveyResponseRecord.submission_id == submission_id,
+            ).order_by(SurveyResponseRecord.response_id)).all()
+            existing_values = [self._survey_row_value(row) for row in existing]
+            if submission_row is not None and existing_values == normalized:
+                return {"submission_id": submission_id, "session_id": session_id, "responses": existing_values, "duplicate": True}
+            if submission_row is not None:
+                raise ValueError("survey submission identity conflict")
+
+            db.add(SurveySubmissionRecord(
+                submission_id=submission_id, experience_id=session.experience_id,
+                session_id=session_id, created_at=utc_now(),
+            ))
+            for item in normalized:
+                prior = db.scalar(select(SurveyResponseRecord).where(
+                    SurveyResponseRecord.session_id == session_id,
+                    SurveyResponseRecord.response_id == item["response_id"],
+                ))
+                if prior is not None:
+                    raise ValueError("survey response identity conflict")
+                db.add(SurveyResponseRecord(**item, created_at=utc_now()))
+            return {"submission_id": submission_id, "session_id": session_id, "responses": normalized, "duplicate": False}
+
+    def list_survey_submissions(self, session_id: str) -> list[dict[str, Any]]:
+        with self.sessions() as db:
+            submissions = db.scalars(select(SurveySubmissionRecord).where(
+                SurveySubmissionRecord.session_id == session_id,
+            ).order_by(SurveySubmissionRecord.created_at, SurveySubmissionRecord.submission_id)).all()
+            rows = db.scalars(select(SurveyResponseRecord).where(
+                SurveyResponseRecord.session_id == session_id,
+            ).order_by(SurveyResponseRecord.created_at, SurveyResponseRecord.response_id)).all()
+            grouped: dict[str, list[dict[str, Any]]] = {}
+            for row in rows:
+                grouped.setdefault(row.submission_id, []).append(self._survey_row_value(row))
+            return [{"submission_id": row.submission_id, "session_id": session_id,
+                     "responses": grouped.get(row.submission_id, [])} for row in submissions]
 
     def list_audit_events(self, *, target_id: str | None = None) -> list[dict[str, Any]]:
         with self.sessions() as db:

@@ -16,7 +16,7 @@ from services.gaze_engine.fixation import (
     detect_fixations_from_association,
     map_fixations_to_aois,
 )
-from services.gaze_engine.quality import GazeQualityAssessment, evaluate_gaze_quality
+from services.gaze_engine.quality import USABLE_UNVERIFIED, GazeQualityAssessment, evaluate_gaze_quality
 from services.telemetry.ingestion import deduplicate_events
 
 DEFAULT_UNAVAILABLE_REASON = "gaze.unavailable"
@@ -216,24 +216,31 @@ def process_trial_gaze(
     validated_context, _ = validate_observation_association(association)
 
     quality_reason = gaze_missingness
+    quality_is_usable = quality.quality_status in {"usable", USABLE_UNVERIFIED}
     if not gaze_available:
         quality_reason = quality_reason or "gaze.permission_denied"
-    elif quality.quality_status != "usable":
+    elif not quality_is_usable:
         quality_reason = quality_reason or (quality.missingness[0] if quality.missingness else DEFAULT_UNAVAILABLE_REASON)
+    elif quality.quality_status == USABLE_UNVERIFIED:
+        quality_reason = quality_reason or "gaze.quality_unverified"
 
-    metrics_available = gaze_available and quality.quality_status == "usable"
+    metrics_available = gaze_available and quality_is_usable
     fixations = detect_fixations_from_association(association) if metrics_available else []
     assignments = (
         map_fixations_to_aois(
             fixations,
             session_id,
             geometry_snapshots,
+            records=records,
             study_id=study_id,
             aoi_set_version=aoi_set_version,
         )
         if metrics_available
         else []
     )
+    if metrics_available and not geometry_snapshots:
+        metrics_available = False
+        quality_reason = "gaze.geometry_unavailable"
     if metrics_available and fixations and not any(assignment.snapshot_id for assignment in assignments):
         metrics_available = False
         quality_reason = "gaze.geometry_unavailable"
@@ -246,7 +253,7 @@ def process_trial_gaze(
         requested_aoi_id=requested_aoi_id,
         start_event=start_event,
         gaze_available=metrics_available,
-        gaze_missingness=quality_reason,
+        gaze_missingness=quality_reason if not metrics_available else None,
         observation_context=validated_context,
     )
     return build_gaze_feature_record(

@@ -276,10 +276,14 @@ def test_p3_feature_provider_filters_version_and_reads_only_authorized_sessions(
     assert [row["feature_record_id"] for row in records] == sorted(
         [gaze_record["feature_record_id"], non_gaze_record["feature_record_id"]]
     )
-    assert calls == sorted({
+    assert provider.get_available_feature_set_versions(study_id=STUDY_ID) == ["0.9.0", FEATURE_SET_VERSION]
+    assert provider.get_available_feature_set_versions(study_id="study-without-records") == []
+    assert sorted(calls) == sorted([
         (gaze_record["session_id"], STUDY_ID),
         (non_gaze_record["session_id"], STUDY_ID),
-    })
+        (gaze_record["session_id"], STUDY_ID),
+        (non_gaze_record["session_id"], STUDY_ID),
+    ])
 
 
 def test_p3_feature_provider_rejects_records_outside_authorized_session_scope() -> None:

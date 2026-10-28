@@ -49,6 +49,7 @@ test("validates StudyConfig timing and the separate session-scoped SurveyPlan", 
     survey_policy: { timing: "after_each_trial", consolidation: "deduplicate_by_question_id" }, gaze_required: false,
   };
   assert.equal(parseStudyConfig(studyConfig, { bootstrap: parsed, study: parsed.eligible_studies[0] }).survey_policy.timing, "after_each_trial");
+  assert.equal(parseStudyConfig({ ...studyConfig, gaze_required: true }, { bootstrap: parsed, study: parsed.eligible_studies[0] }).gaze_required, true);
   assert.throws(() => parseStudyConfig({ ...studyConfig, config_version: "stale-version" }, { bootstrap: parsed, study: parsed.eligible_studies[0] }), /does not match/);
   const surveyPlan = {
     schema_version: "1.0.0", survey_plan_id: "survey-plan-1", session_id: parsed.session_id,
@@ -95,6 +96,26 @@ test("participant consent and withdrawal helpers use credentialed state-changing
     assert.equal(request.init.method, "POST");
     assert.equal(request.init.headers["Content-Type"], "application/json");
   }
+});
+
+test("survey persistence helper sends the exact frozen submission with session credentials", async () => {
+  const { submitParticipantSurvey } = await import("../src/bootstrap.js");
+  let request;
+  const submission = {
+    submission_id: "submission-1", session_id: "session/a", responses: [{
+      response_id: "response-1", submission_id: "submission-1", experience_id: "experience-test",
+      session_id: "session/a", participant_id: null, study_id: "study-a", question_id: "q1",
+      question_set_version: "questions-v3", answer_type: "free_text", answer: "answer",
+    }],
+  };
+  const result = await submitParticipantSurvey({
+    endpoint: "http://localhost:8000/v1/", sessionId: "session/a", submission,
+    fetchImpl: async (url, init) => { request = { url, init }; return { ok: true, json: async () => ({ ...submission, duplicate: false }) }; },
+  });
+  assert.equal(result.submission_id, submission.submission_id);
+  assert.equal(request.url, "http://localhost:8000/v1/sessions/session%2Fa/survey-responses");
+  assert.equal(request.init.credentials, "include");
+  assert.deepEqual(JSON.parse(request.init.body), submission);
 });
 
 test("loads version-pinned configs, separate survey plan, timing, and modality options", async () => {

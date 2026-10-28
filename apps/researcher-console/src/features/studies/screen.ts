@@ -45,6 +45,8 @@ export function mountStudyAuthoring(root: HTMLElement, api = new ResearcherApi()
     addInput("survey_policy", "Survey timing and consolidation policy (JSON)", '{"timing":"after_exposure","consolidation":"deduplicate_by_question_id"}', true);
     addInput("aois", "AOI definitions (JSON array)", "[]", true);
     addInput("questions", "Question definitions (JSON array)", "[]", true);
+    const gazeLabel = el("label", "Require gaze for this Study (falls back to non-gaze if unavailable)");
+    const gazeInput = el("input"); gazeInput.type = "checkbox"; gazeInput.name = "gaze_required"; fields.set("gaze_required", gazeInput); gazeLabel.append(gazeInput); form.append(gazeLabel);
     const save = el("button", "Save draft"); save.type = "submit"; form.append(save);
     form.addEventListener("submit", async (event) => {
       event.preventDefault(); save.disabled = true; error.textContent = "";
@@ -55,7 +57,7 @@ export function mountStudyAuthoring(root: HTMLElement, api = new ResearcherApi()
         const input: StudyInput = { experience_id: fieldValue("experience_id").trim(), name: fieldValue("name").trim(),
           priority: Number(fieldValue("priority")), eligibility_rules: parse("eligibility_rules"),
           timing_rules: parse("timing_rules"), survey_policy: parse("survey_policy"),
-          aois: parse("aois"), questions: parse("questions") };
+          aois: parse("aois"), questions: parse("questions"), gaze_required: (fields.get("gaze_required") as HTMLInputElement).checked };
         if (!Number.isInteger(input.priority)) throw new Error("Priority must be a whole number.");
         const id = fieldValue("study_id").trim();
         await (id ? api.updateStudy(id, input) : api.createStudy(input.experience_id, input));
@@ -83,7 +85,7 @@ export function mountStudyAuthoring(root: HTMLElement, api = new ResearcherApi()
       } catch (cause) { error.textContent = cause instanceof Error ? cause.message : "Unable to load Studies"; }
     }
     function renderStudy(study: StudyRecord): HTMLLIElement {
-      const item = el("li", `${study.name} · ${study.status} · priority ${study.priority}${study.config_version ? ` · ${study.config_version}` : ""}`);
+      const item = el("li", `${study.name} · Study ID ${study.study_id} · ${study.status} · priority ${study.priority}${study.config_version ? ` · config ${study.config_version}` : ""}`);
       if (study.status === "draft" && session.permissions.includes("studies:edit")) {
         const edit = el("button", "Edit draft");
         edit.addEventListener("click", () => {
@@ -96,6 +98,7 @@ export function mountStudyAuthoring(root: HTMLElement, api = new ResearcherApi()
           fields.get("survey_policy")!.value = JSON.stringify(study.config.survey_policy ?? { timing: "after_exposure", consolidation: "deduplicate_by_question_id" }, null, 2);
           fields.get("aois")!.value = JSON.stringify(study.config.aois ?? [], null, 2);
           fields.get("questions")!.value = JSON.stringify(study.config.questions ?? [], null, 2);
+          (fields.get("gaze_required") as HTMLInputElement).checked = study.config.gaze_required === true;
           fields.get("name")!.focus();
         });
         item.append(edit);

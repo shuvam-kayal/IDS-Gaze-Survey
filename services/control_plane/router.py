@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from services.control_plane.auth import (
@@ -32,6 +32,7 @@ from services.control_plane.store import ControlPlaneRepository
 from services.control_plane.survey_consolidation import consolidate_survey
 from services.gaze_engine.adapter import GazeNormalizationError
 from services.gaze_engine.geometry_bridge import validate_server_geometry_submission
+from services.feature_engine.session_processing import persist_non_gaze_feature_records
 from services.telemetry.persistence import RecordIdentityConflict, TelemetryRepository
 
 PARTICIPANT_SESSION_COOKIE = "ids_participant_session"
@@ -140,6 +141,20 @@ class ParticipantWithdrawalResponse(StrictModel):
     schema_version: Literal["1.0.0"] = "1.0.0"
     status: Literal["withdrawn"]
     withdrawn_at: str
+
+
+class SurveySubmissionRequest(StrictModel):
+    submission_id: str = Field(min_length=1, max_length=255)
+    session_id: str = Field(min_length=1, max_length=255)
+    responses: list[dict] = Field(max_length=500)
+
+
+class SurveySubmissionResponse(StrictModel):
+    schema_version: Literal["1.0.0"] = "1.0.0"
+    submission_id: str
+    session_id: str
+    responses: list[dict]
+    duplicate: bool = False
 
 
 class GeometrySubmissionRequest(StrictModel):
@@ -273,6 +288,7 @@ class StudyWrite(StrictModel):
     survey_policy: dict = Field(default_factory=lambda: {"timing": "after_exposure", "consolidation": "deduplicate_by_question_id"})
     aois: list[dict] = Field(default_factory=list, max_length=500)
     questions: list[dict] = Field(default_factory=list, max_length=500)
+    gaze_required: bool = False
 
     @field_validator("name")
     @classmethod
@@ -688,7 +704,7 @@ def create_study(
     if body.experience_id != experience_id: raise HTTPException(status_code=422, detail="Experience identity mismatch")
     record = repository.save_study(None, experience_id=experience_id, name=body.name, priority=body.priority,
         eligibility_rules=body.eligibility_rules,
-        config={"schema_version": "1.0.0", "timing_rules": body.timing_rules, "survey_policy": body.survey_policy, "aois": body.aois, "questions": body.questions},
+        config={"schema_version": "1.0.0", "timing_rules": body.timing_rules, "survey_policy": body.survey_policy, "aois": body.aois, "questions": body.questions, "gaze_required": body.gaze_required},
         actor_id=principal.user_id, actor_role=principal.role.value)
     return _study_response(record)
 
@@ -706,7 +722,7 @@ def update_study(
     try:
         record = repository.save_study(study_id, experience_id=body.experience_id, name=body.name,
             priority=body.priority, eligibility_rules=body.eligibility_rules,
-            config={"schema_version": "1.0.0", "timing_rules": body.timing_rules, "survey_policy": body.survey_policy, "aois": body.aois, "questions": body.questions},
+            config={"schema_version": "1.0.0", "timing_rules": body.timing_rules, "survey_policy": body.survey_policy, "aois": body.aois, "questions": body.questions, "gaze_required": body.gaze_required},
             actor_id=principal.user_id, actor_role=principal.role.value)
     except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _study_response(record)
@@ -790,6 +806,7 @@ def create_session_bootstrap(
     repository: Annotated[ControlPlaneRepository, Depends(get_control_repository)],
     origin_header: Annotated[str | None, Header(alias="Origin")] = None,
     participant_cookie: Annotated[str | None, Cookie(alias=PARTICIPANT_SESSION_COOKIE)] = None,
+    new_session: Annotated[bool, Query()] = False,
 ) -> SessionBootstrapResponse:
     """Create a participant session only from a published, origin-authorized Experience."""
     if body.schema_version != "1.0.0":
@@ -802,7 +819,7 @@ def create_session_bootstrap(
     if not experience or experience["status"] != "published" or not experience.get("config_version"):
         raise HTTPException(status_code=409, detail="Experience has no published config version")
     existing = repository.find_participant_session_by_credential(participant_cookie) if participant_cookie else None
-    if existing is not None and existing["experience_id"] == experience_id:
+    if existing is not None and existing["experience_id"] == experience_id and not new_session:
         session_id = existing["session_id"]
         issued_at = existing["issued_at"]
         expires_at = existing["expires_at"]
@@ -921,6 +938,67 @@ def withdraw_participant_session(
     return ParticipantWithdrawalResponse(
         status="withdrawn", withdrawn_at=stored["withdrawn_at"].isoformat().replace("+00:00", "Z"),
     )
+
+
+@participant_router.post("/sessions/{session_id}/survey-responses", response_model=SurveySubmissionResponse)
+def persist_participant_survey_submission(
+    session_id: str,
+    body: SurveySubmissionRequest,
+    response: Response,
+    repository: Annotated[ControlPlaneRepository, Depends(get_control_repository)],
+    telemetry_repository: Annotated[TelemetryRepository, Depends(get_telemetry_repository)],
+    participant_cookie: Annotated[str | None, Cookie(alias=PARTICIPANT_SESSION_COOKIE)] = None,
+    origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+) -> SurveySubmissionResponse:
+    """Persist an SDK survey submission after server-side session/config validation."""
+    session = require_participant_session(session_id, participant_cookie, repository)
+    origin = _validate_participant_origin(session["experience_id"], origin_header, repository)
+    if body.session_id != session_id:
+        raise HTTPException(status_code=422, detail="survey submission path and body session_id do not match")
+    try:
+        stored = repository.persist_survey_submission(body.model_dump())
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 409 if "conflict" in detail or "identity" in detail else 422
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    assignment = repository.get_assignment(session_id)
+    ratios: dict[str, float | None] = {}
+    for item in (assignment or {}).get("assignments", []):
+        config = item.get("study_config", {}) if isinstance(item, dict) else {}
+        questions = config.get("question_config", {}).get("questions", []) if isinstance(config, dict) else []
+        total = len(questions)
+        answered = sum(1 for entry in stored["responses"] if entry["study_id"] == item.get("study_id"))
+        ratios[item.get("study_id")] = answered / total if total else None
+    persist_non_gaze_feature_records(
+        session_id=session_id,
+        experience_id=session["experience_id"],
+        assignments=(assignment or {}).get("assignments", []),
+        telemetry_repository=telemetry_repository,
+        survey_completion_ratios=ratios,
+    )
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Vary"] = "Origin"
+    return SurveySubmissionResponse(
+        submission_id=stored["submission_id"], session_id=stored["session_id"],
+        responses=stored["responses"], duplicate=stored["duplicate"],
+    )
+
+
+@participant_router.get("/sessions/{session_id}/survey-responses")
+def list_participant_survey_submissions(
+    session_id: str,
+    response: Response,
+    repository: Annotated[ControlPlaneRepository, Depends(get_control_repository)],
+    participant_cookie: Annotated[str | None, Cookie(alias=PARTICIPANT_SESSION_COOKIE)] = None,
+    origin_header: Annotated[str | None, Header(alias="Origin")] = None,
+) -> dict:
+    """Retrieve only survey submissions belonging to the authenticated session."""
+    session = require_participant_session(session_id, participant_cookie, repository)
+    origin = _validate_participant_origin(session["experience_id"], origin_header, repository)
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Vary"] = "Origin"
+    return {"schema_version": "1.0.0", "session_id": session_id,
+            "submissions": repository.list_survey_submissions(session_id)}
 
 
 @participant_router.post(

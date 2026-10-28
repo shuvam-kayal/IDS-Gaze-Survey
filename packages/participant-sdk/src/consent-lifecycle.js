@@ -172,6 +172,11 @@ export class ConsentLifecycle {
     try { return provider.stop(); } catch { return undefined; }
   }
 
+  async stopCamera() {
+    const providerStop = this.stopProvider();
+    if (providerStop && typeof providerStop.then === "function") await providerStop.catch(() => {});
+  }
+
   async startCamera({ sessionId, provider, initialGeometry, onSample, onStatus = () => {}, onCameraStatus = () => {} } = {}) {
     if (!this.canCollectResearch) throw new Error("Research consent is required before camera capture");
     if (!this.policy.camera.offered || this.state.camera.decision !== "accepted") {

@@ -189,6 +189,7 @@ def test_p3_postgres_feature_record_is_read_and_analyzed_by_p4(monkeypatch: pyte
         )
         assert len(persisted_records) == 1
         assert persisted_records[0]["feature_record_id"] == feature_record_id
+        assert feature_provider.get_available_feature_set_versions(study_id=study_id) == ["1.0.0"]
 
         # Even if another study has a persisted record, the adapter's
         # authenticated session lookup must prevent cross-study leakage.
@@ -282,6 +283,7 @@ def test_p3_non_gaze_feature_record_preserves_missingness_through_p4(monkeypatch
         p3_result = process_authorized_gaze([], context=context, repository=repository)
         assert p3_result.feature_record["modality"] == "non_gaze_only"
         assert "gaze.permission_denied" in p3_result.feature_record["quality"]["missingness"]
+        assert provider.get_available_feature_set_versions(study_id=study_id) == ["1.0.0"]
 
         response = TestClient(app).post("/v1/analytics/analyze", json={
             "schema_version": "1.0.0",

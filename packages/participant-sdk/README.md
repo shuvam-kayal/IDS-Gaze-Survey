@@ -81,7 +81,8 @@ IDs. Because v1 has no numeric scale minimum/maximum fields, scale questions
 need versioned `options` for validation. `createSurveyRuntime` freezes the
 payload and IDs after the first valid submit so retries reuse the same
 idempotency key and response IDs. The host supplies the persistence callback;
-the API scaffold does not yet expose a survey response endpoint.
+the live participant app uses the authenticated survey-response endpoint, while
+offline demos may keep answers page-local.
 
 `startInteractionCapture` accepts a versioned server-provided event allow-list and a
 consented lifecycle controller. It records only event type, coordinates,
@@ -117,4 +118,5 @@ trigger a flush, and hosts should call `close()` at session termination. On
 withdrawal, call `purge()` and detach lifecycle handlers; do not flush pending
 research events as part of the withdrawal audit. `apps/participant-demo/`
 shows the participant flow against a local, versioned sample fixture. Its
-consent records and survey responses are demo-only in-memory examples.
+offline consent records and survey responses are demo-only in-memory examples;
+live participant sessions use the server persistence routes.
