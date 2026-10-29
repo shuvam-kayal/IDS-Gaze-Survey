@@ -192,8 +192,8 @@ function startJourney(modality) {
   consent.registerCollector(() => { queue.purge(); detachQueueLifecycle(); updateQueueStatus(); });
   const ctx = context();
   enqueue(makeEnvelope("session.participation_started", { modality }));
+  const aoiConfigs = config.aoi_configs ?? [config.aoi_config];
   try {
-    const aoiConfigs = config.aoi_configs ?? [config.aoi_config];
     const gazeIds = new Set(config.gaze_study_ids ?? []);
     for (const aoiConfig of aoiConfigs) {
       if (!gazeIds.has(aoiConfig.study_id)) continue;

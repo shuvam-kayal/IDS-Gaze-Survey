@@ -18,14 +18,22 @@ export function mountAnalyticsScreen(root: HTMLElement, api: ResearcherApi) {
   for (const type of analysisTypes) { const option = document.createElement("option"); option.value = type; option.textContent = type.replaceAll("_", " "); if (type === "descriptive") option.selected = true; typeSelect.append(option); }
   const modality = document.createElement("select"); modality.setAttribute("aria-label", "Modality policy");
   for (const [value, label] of [["best_available", "Best available"], ["gaze_only", "Gaze only"], ["non_gaze_only", "Non-gaze only"]] as const) { const option = document.createElement("option"); option.value = value; option.textContent = label; modality.append(option); }
+  const target = document.createElement("input"); target.type = "text"; target.setAttribute("aria-label", "ML target feature"); target.placeholder = "e.g. survey.completion_ratio";
+  const predictors = document.createElement("input"); predictors.type = "text"; predictors.setAttribute("aria-label", "ML predictor features"); predictors.placeholder = "e.g. interaction.click_count, interaction.scroll_distance_px";
+  const mlHelp = document.createElement("p"); mlHelp.textContent = "For classification or regression, choose one ML type, then enter the target and comma-separated predictor feature names. Run descriptive analysis first to see available feature names. Model results need enough independent sessions and may be reported as insufficient_data for small samples.";
+  const mlControls = document.createElement("div"); mlControls.hidden = true;
   const submit = document.createElement("button"); submit.type = "submit"; submit.textContent = "Run analysis";
   const results = document.createElement("div"); results.setAttribute("aria-live", "polite");
   const controls = (label: string, input: HTMLElement) => { const wrapper = document.createElement("label"); wrapper.append(document.createTextNode(label), input); return wrapper; };
-  form.append(controls("Study", studySelect), controls("Feature set version", versionSelect), controls("Analysis types", typeSelect), controls("Modality", modality), submit);
+  mlControls.append(mlHelp, controls("Target feature", target), controls("Predictor features (comma-separated)", predictors));
+  form.append(controls("Study", studySelect), controls("Feature set version", versionSelect), controls("Analysis types", typeSelect), controls("Modality", modality), mlControls, submit);
   section.append(heading, intro, status, form, results); root.replaceChildren(section);
 
   const updateRunAvailability = () => {
-    submit.disabled = !studySelect.value || !versionSelect.value || ![...typeSelect.selectedOptions].length;
+    const selected = [...typeSelect.selectedOptions].map((option) => option.value);
+    const mlTypes = selected.filter((type) => type === "classification" || type === "regression");
+    mlControls.hidden = mlTypes.length === 0;
+    submit.disabled = !studySelect.value || !versionSelect.value || !selected.length || mlTypes.length > 1;
   };
   updateRunAvailability();
 
@@ -54,15 +62,26 @@ export function mountAnalyticsScreen(root: HTMLElement, api: ResearcherApi) {
   };
   studySelect.addEventListener("change", () => { void loadVersions(); });
   typeSelect.addEventListener("change", updateRunAvailability);
+  target.addEventListener("input", updateRunAvailability);
+  predictors.addEventListener("input", updateRunAvailability);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const selectedTypes = [...typeSelect.selectedOptions].map((option) => option.value as AnalysisType);
     if (!selectedTypes.length || !versionSelect.value) { status.textContent = "Choose an available persisted feature version and at least one analysis type."; updateRunAvailability(); return; }
+    const mlTypes = selectedTypes.filter((type) => type === "classification" || type === "regression");
+    if (mlTypes.length > 1) { status.textContent = "Choose classification or regression in a request, not both."; updateRunAvailability(); return; }
+    const predictorNames = predictors.value.split(",").map((name) => name.trim()).filter(Boolean);
+    if (mlTypes.length && (!target.value.trim() || !predictorNames.length)) {
+      status.textContent = "Enter one target feature and at least one comma-separated predictor feature for the ML analysis.";
+      target.focus(); updateRunAvailability(); return;
+    }
     submit.disabled = true; status.textContent = "Analysis is running…"; results.replaceChildren();
     const request: AnalysisRequestV1 = {
       schema_version: "1.0.0", analysis_request_id: crypto.randomUUID(), study_id: studySelect.value,
       feature_set_version: versionSelect.value, modality_policy: modality.value as AnalysisRequestV1["modality_policy"],
-      analysis_types: selectedTypes, parameters: {}, requested_at: new Date().toISOString(),
+      analysis_types: selectedTypes,
+      parameters: mlTypes.length ? { target: target.value.trim(), features: predictorNames } : {},
+      requested_at: new Date().toISOString(),
     };
     try {
       const result: AnalysisResultV1 = await analytics.analyze(request);

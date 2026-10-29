@@ -19,6 +19,16 @@ def test_non_gaze_features_from_events():
     assert result == {"interaction.click_count": 1, "interaction.scroll_distance_px": 100.0, "survey.completion_ratio": None}
 
 
+def test_non_gaze_features_derive_scroll_distance_from_absolute_sdk_offsets():
+    events = [
+        {"event_type": "interaction.scroll", "payload": {"scroll_x_px": 0, "scroll_y_px": 0}},
+        {"event_type": "interaction.scroll", "payload": {"scroll_x_px": 0, "scroll_y_px": 120}},
+        {"event_type": "interaction.scroll", "payload": {"scroll_x_px": 0, "scroll_y_px": 100}},
+    ]
+    result = build_non_gaze_features(events)
+    assert result["interaction.scroll_distance_px"] == 140.0
+
+
 def test_event_shape_helper():
     event = {"schema_version":"1.0.0", "event_id":"evt-1", "experience_id":"exp-1", "study_ids":[], "session_id":"session-1", "event_type":"interaction.click", "occurred_at":"2026-01-01T10:00:00Z", "payload":{}}
     assert validate_event_shape(event)

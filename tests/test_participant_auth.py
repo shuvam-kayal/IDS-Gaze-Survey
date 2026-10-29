@@ -1,8 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi import HTTPException, Response
 
 from services.control_plane.participant_auth import require_participant_session
-from services.control_plane.router import BootstrapRequest, create_session_bootstrap
+from services.control_plane.router import BootstrapRequest, _timestamp, create_session_bootstrap
 
 
 class FakeRepository:
@@ -48,7 +50,8 @@ class BootstrapRepository:
 
     def create_participant_session(self, *, session_id, experience_id, issued_at, expires_at):
         state = {"session_id": session_id, "experience_id": experience_id, "status": "open",
-                 "issued_at": issued_at, "expires_at": expires_at}
+                 "issued_at": issued_at.astimezone(timezone(timedelta(hours=5, minutes=30))),
+                 "expires_at": expires_at.astimezone(timezone(timedelta(hours=5, minutes=30)))}
         credential = f"credential-{session_id}"
         self.sessions[credential] = state
         return state, credential
@@ -69,3 +72,8 @@ def test_bootstrap_retry_reuses_same_server_session_and_assignment(monkeypatch):
     assert second.session_id == first.session_id
     assert second.issued_at == first.issued_at
     assert "set-cookie" not in second_response.headers
+
+
+def test_api_timestamps_are_normalized_to_utc():
+    local_time = datetime(2026, 10, 29, 18, 40, 59, 812535, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+    assert _timestamp(local_time) == "2026-10-29T13:10:59.812535Z"

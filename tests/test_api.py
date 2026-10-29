@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -71,6 +71,20 @@ def test_exact_retry_returns_duplicate_response():
     retry = api.ingest_event(api.EventEnvelope.model_validate(e))
     assert retry.status_code == 200
     assert json.loads(retry.body)["duplicate"] is True
+
+
+def test_event_receipt_normalizes_database_timezone_to_utc():
+    event = {
+        "schema_version": "1.0.0", "event_id": "evt-local-time",
+        "experience_id": "exp-test", "study_ids": ["study-test"],
+        "session_id": "session-test", "event_type": "interaction.click",
+        "occurred_at": "2026-01-01T10:00:00Z", "payload": {},
+    }
+    api._repository = FakeRepository()
+    local_time = datetime(2026, 1, 1, 5, 30, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+    api._repository.ingest = lambda _: IngestionResult(event["event_id"], False, local_time)
+    response = api.ingest_event(api.EventEnvelope.model_validate(event))
+    assert json.loads(response.body)["ingested_at"] == "2026-01-01T00:00:00Z"
 
 
 def test_unknown_version_rejected():
