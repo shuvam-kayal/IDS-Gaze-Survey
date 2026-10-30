@@ -30,9 +30,9 @@ from services.control_plane.auth import (
 from services.control_plane.participant_auth import require_participant_session
 from services.control_plane.store import ControlPlaneRepository
 from services.control_plane.survey_consolidation import consolidate_survey
+from services.feature_engine.session_processing import persist_non_gaze_feature_records
 from services.gaze_engine.adapter import GazeNormalizationError
 from services.gaze_engine.geometry_bridge import validate_server_geometry_submission
-from services.feature_engine.session_processing import persist_non_gaze_feature_records
 from services.telemetry.persistence import RecordIdentityConflict, TelemetryRepository
 
 PARTICIPANT_SESSION_COOKIE = "ids_participant_session"
@@ -440,7 +440,9 @@ class SessionBootstrapResponse(StrictModel):
 
 
 def _timestamp(value) -> str:
-    return value.isoformat().replace("+00:00", "Z")
+    # PostgreSQL returns timestamptz values in the connection's configured
+    # timezone. Normalize them before serializing the contract's UTC value.
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _experience_response(record: dict) -> ExperienceResponse:
@@ -862,8 +864,8 @@ def create_session_bootstrap(
         privacy_notice_version=os.getenv("PRIVACY_NOTICE_VERSION", "1.0.0"),
         research_consent_version=os.getenv("RESEARCH_CONSENT_VERSION", "1.0.0"),
         camera_capture_supported=body.camera_capture_supported,
-        issued_at=issued_at.isoformat().replace("+00:00", "Z"),
-        expires_at=expires_at.isoformat().replace("+00:00", "Z"),
+        issued_at=_timestamp(issued_at),
+        expires_at=_timestamp(expires_at),
     )
 
 

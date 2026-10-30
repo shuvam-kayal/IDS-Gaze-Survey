@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
+from hashlib import sha256
 from typing import Any
 
 from services.telemetry.ingestion import deduplicate_events
-
 
 FEATURE_SET_VERSION = "1.0.0"
 DEFAULT_GAZE_MISSINGNESS = "gaze.unavailable"
@@ -17,11 +16,25 @@ def build_non_gaze_features(
     events: list[dict[str, Any]], *, survey_completion_ratio: float | None = None
 ) -> dict[str, int | float | None]:
     clicks = sum(1 for event in events if event.get("event_type") == "interaction.click")
-    scroll = sum(
-        float(event.get("payload", {}).get("scroll_delta_px") or 0)
-        for event in events
-        if event.get("event_type") == "interaction.scroll"
-    )
+    scroll = 0.0
+    previous_position: tuple[float, float] | None = None
+    for event in events:
+        if event.get("event_type") != "interaction.scroll":
+            continue
+        payload = event.get("payload", {})
+        if "scroll_delta_px" in payload:
+            # Keep compatibility with existing event producers that report a
+            # signed vertical delta directly.
+            scroll += float(payload.get("scroll_delta_px") or 0)
+            previous_position = None
+            continue
+        if "scroll_x_px" in payload or "scroll_y_px" in payload:
+            # The participant SDK reports absolute scroll offsets. Derive the
+            # distance travelled from consecutive observations.
+            position = (float(payload.get("scroll_x_px") or 0), float(payload.get("scroll_y_px") or 0))
+            if previous_position is not None:
+                scroll += abs(position[0] - previous_position[0]) + abs(position[1] - previous_position[1])
+            previous_position = position
     return {
         "interaction.click_count": clicks,
         "interaction.scroll_distance_px": scroll,

@@ -1,4 +1,5 @@
 import os
+from datetime import UTC
 from typing import Annotated
 
 from fastapi import Cookie, Depends, FastAPI, Header, Response
@@ -7,8 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from services.control_plane.participant_auth import require_participant_session
+from services.analytics.feature_records import TelemetryFeatureRecordProvider
+from services.analytics.integration import create_analytics_router
+from services.analytics.persistence import AnalysisRepository
 from services.control_plane.auth import Permission, Principal, require_permission
+from services.control_plane.participant_auth import require_participant_session
 from services.control_plane.router import (
     PARTICIPANT_SESSION_COOKIE,
     _validate_participant_origin,
@@ -27,9 +31,6 @@ from services.telemetry.persistence import (
     RecordIdentityConflict,
     TelemetryRepository,
 )
-from services.analytics.feature_records import TelemetryFeatureRecordProvider
-from services.analytics.integration import create_analytics_router
-from services.analytics.persistence import AnalysisRepository
 
 app = FastAPI(
     title="Attention Analytics API",
@@ -212,7 +213,7 @@ def ingest_event(event: EventEnvelope) -> JSONResponse:
             "event_id": result.event_id,
             "status": "duplicate" if result.duplicate else "accepted",
             "duplicate": result.duplicate,
-            "ingested_at": result.ingested_at.isoformat().replace("+00:00", "Z"),
+            "ingested_at": result.ingested_at.astimezone(UTC).isoformat().replace("+00:00", "Z"),
         },
     )
 
