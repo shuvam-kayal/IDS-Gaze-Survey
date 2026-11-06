@@ -5,6 +5,8 @@ import csv
 import json
 import math
 import statistics
+import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -22,16 +24,18 @@ class PageQualityError(ValueError):
 
 
 def _image_features(path: Path) -> dict[str, float]:
-    image = Image.open(path).convert("RGB")
+    with Image.open(path) as source:
+        width, height = source.size
+        image = source.convert("RGB")
     image.thumbnail((128, 256))
     pixels = list(image.getdata())
     channels = [[p[i] / 255 for p in pixels] for i in range(3)]
     lum = [0.2126*r + 0.7152*g + 0.0722*b for r,g,b in zip(*channels)]
-    rows, cols = image.height, image.width
+    cols, rows = image.size
     row_means = [statistics.fmean(lum[y*cols:(y+1)*cols]) for y in range(rows)]
     edges = [abs(lum[y*cols+x]-lum[y*cols+x-1]) for y in range(rows) for x in range(1,cols)]
     return {
-        "image_width": float(rows), "image_height": float(cols),
+        "image_width": float(width), "image_height": float(height),
         "brightness_mean": statistics.fmean(lum),
         "brightness_sd": statistics.pstdev(lum),
         "brightness_top": statistics.fmean(lum[:max(1,len(lum)//3)]),
@@ -43,7 +47,7 @@ def _image_features(path: Path) -> dict[str, float]:
         "green_mean": statistics.fmean(channels[1]),
         "blue_mean": statistics.fmean(channels[2]),
         "color_variation": statistics.fmean(statistics.pstdev(c) for c in channels),
-        "aspect_ratio": float(image.width / image.height) if image.height else 0.0,
+        "aspect_ratio": float(width / height) if height else 0.0,
     }
 
 
@@ -52,6 +56,8 @@ def load_page_quality_dataset(dataset_root: str | Path) -> list[dict[str, Any]]:
     if not root.is_dir():
         raise PageQualityError(f"Dataset directory not found: {root}")
     records = []
+    diagnostics = {"rating_rows": 0, "accepted_rows": 0, "missing_targets": 0, "duplicate_rows": 0, "missing_screenshots": 0, "corrupt_screenshots": 0}
+    image_cache: dict[Path, dict[str, float]] = {}
     for domain_dir in sorted(root.glob("dataverse_files_*")):
         for ratings_path in sorted(domain_dir.glob("ratings.avg.*.txt")):
             domain = ratings_path.name.removeprefix("ratings.avg.").removesuffix(".txt")
@@ -60,23 +66,36 @@ def load_page_quality_dataset(dataset_root: str | Path) -> list[dict[str, Any]]:
             if not rows or not {"stimulusId", *TARGETS}.issubset(rows[0]):
                 raise PageQualityError(f"Unexpected rating schema: {ratings_path}")
             for row in rows:
+                diagnostics["rating_rows"] += 1
                 stimulus = row["stimulusId"]
                 matches = list(domain_dir.glob(f"**/{stimulus}"))
                 if len(matches) != 1:
-                    raise PageQualityError(f"Expected one screenshot for {stimulus} in {domain_dir}; found {len(matches)}")
-                features = _image_features(matches[0])
-                features["domain"] = domain
+                    diagnostics["missing_screenshots"] += 1
+                    continue
+                if matches[0] not in image_cache:
+                    try:
+                        image_cache[matches[0]] = _image_features(matches[0])
+                    except Exception as exc:
+                        diagnostics["corrupt_screenshots"] += 1
+                        continue
+                features = image_cache[matches[0]]
                 for target in TARGETS:
                     try:
                         score = float(row[target])
                     except (ValueError, TypeError):
+                        diagnostics["missing_targets"] += 1
                         continue
                     if math.isfinite(score):
-                        records.append({"record_id": f"{domain}:{stimulus}:{target}", "page_id": stimulus,
-                                        "site_group": domain, "target_name": target,
+                        diagnostics["accepted_rows"] += 1
+                        records.append({"record_id": f"{domain}:{stimulus}:{target}", "page_id": f"{domain}:{stimulus}",
+                                        "site_group": None, "target_name": target, "screenshot_path": str(matches[0]),
                                         "features": {**features, "rating": score}, "target": score})
     if not records:
         raise PageQualityError("No valid page ratings found")
+    # This source provides stimulus IDs but no originating website IDs. Do not
+    # infer site identity from category, path, or filename.
+    for row in records:
+        row["dataset_diagnostics"] = diagnostics
     return records
 
 
