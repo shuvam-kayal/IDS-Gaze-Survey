@@ -31,7 +31,7 @@ def generate_choice_data(*, seed: int = 17, participants: int = 300, trials_per_
                 category = rng.randint(0, 2)
                 price = rng.uniform(0, 1)
                 preference = max(-1., min(1., pref + rng.gauss(0, .55)))
-                match = float((category == (p % 3)))
+                match = float(category == (p % 3))
                 clicks = max(0, rng.gauss(1.2 + 1.8 * max(0, preference), .9))
                 scroll = max(0, rng.gauss(.45 + .25 * clicks, .2))
                 review = max(0, rng.gauss(4 + 2.2 * clicks + preference, 2.0))

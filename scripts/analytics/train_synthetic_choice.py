@@ -2,7 +2,12 @@ import argparse
 import json
 from pathlib import Path
 
-from services.analytics.choice_model import load_model, predict_choice, save_model, train_choice_model
+from services.analytics.choice_model import (
+    load_model,
+    predict_choice,
+    save_model,
+    train_choice_model,
+)
 from services.analytics.synthetic_choice_data import generate_choice_data, save_choice_data
 
 parser=argparse.ArgumentParser()
