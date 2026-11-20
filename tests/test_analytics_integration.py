@@ -563,10 +563,19 @@ def test_heatmap_geometry_version_cannot_drift_from_p3_aoi_version() -> None:
 
 def test_shared_api_shell_mounts_p4_router_without_replacing_p3_health_route() -> None:
     from services.api.app import app as shared_app
+    from services.api.app import get_analytics_feature_provider, get_analytics_repository
+    # This route should reach authentication without requiring a configured
+    # PostgreSQL connection; repository access occurs only after authorization.
+    shared_app.dependency_overrides[get_analytics_repository] = lambda: object()
+    shared_app.dependency_overrides[get_analytics_feature_provider] = lambda: object()
     client = TestClient(shared_app)
-    assert client.get("/health").status_code == 200
-    assert client.get("/v1/analytics/models").status_code == 200
-    assert client.post("/v1/analytics/analyze", json=request()).status_code == 401
+    try:
+        assert client.get("/health").status_code == 200
+        assert client.get("/v1/analytics/models").status_code == 200
+        assert client.post("/v1/analytics/analyze", json=request()).status_code == 401
+    finally:
+        shared_app.dependency_overrides.pop(get_analytics_repository, None)
+        shared_app.dependency_overrides.pop(get_analytics_feature_provider, None)
 
 
 def test_canonical_feature_record_rejects_noncanonical_spatial_field() -> None:

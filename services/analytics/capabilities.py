@@ -11,6 +11,8 @@ from .engine import AnalysisError, finite, is_gaze, parts, quality_for
 # Registry metadata is intentionally declarative: integrations can inspect task and
 # modality requirements before choosing a model, without importing model internals.
 MODEL_REGISTRY={
+ 'synthetic_product_choice':{'task':'variable candidate choice','required_modalities':['survey_preferences','interaction'],'modality':'non_gaze','target':'selected_candidate_id','status':'synthetic demonstration; requires artifact'},
+ 'page_quality_visual':{'task':'screenshot rating regression','inputs':['screenshot image'],'targets':['US','AE','TRU','TYP','EXMPL','AVG'],'modality':'visual_only','evaluation':'website identity unavailable; exploratory only'},
  'ridge':{'task':'regression','required_modalities':'selected predictors','gaze_optional':True,'fallback':'mean'},
  'logistic':{'task':'classification','required_modalities':'selected predictors','gaze_optional':True,'fallback':'majority'},
  'mean':{'task':'regression','required_modalities':[],'gaze_optional':True,'fallback':None},

@@ -13,6 +13,7 @@ from typing import Any, Protocol
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 
 from .capabilities import MODEL_REGISTRY
+from .choice_model import load_model, predict_choice
 from .engine import ANALYSIS_VERSION, AnalysisError, analyze
 from .feature_records import adapt_records
 from .persistence import AnalysisRepository
@@ -178,6 +179,18 @@ def create_analytics_router(
     @router.get("/models")
     def list_models() -> dict[str, Any]:
         return {"registry_version": "p4-model-registry/1.0.0", "models": MODEL_REGISTRY}
+
+    @router.post("/choice/predict")
+    def predict_choice_route(payload: dict[str, Any]) -> dict[str, Any]:
+        if set(payload) != {"participant_id", "session_id", "study_id", "trial_id", "candidate_set"}:
+            raise HTTPException(status_code=422, detail={"code": "invalid_choice_request", "message": "Expected participant_id, session_id, study_id, trial_id, candidate_set"})
+        try:
+            artifact = load_model("artifacts/analytics/synthetic_choice/model.json")
+            return predict_choice(artifact, payload)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=503, detail={"code": "model_not_trained", "message": str(exc)}) from exc
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(status_code=422, detail={"code": "invalid_choice_request", "message": str(exc)}) from exc
 
     @router.get("/feature-sets")
     def list_feature_sets(

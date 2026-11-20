@@ -1,0 +1,1533 @@
+{
+  "artifact_version": "neuma-page-exposure/1.0.0",
+  "result": {
+    "status": "succeeded",
+    "experiment": {
+      "target": "selected_any",
+      "task": "classification",
+      "task_recipe": null,
+      "unit_of_prediction": "feature_record",
+      "intended_use": "exploratory research only; no individual-level decisions",
+      "predictors": [
+        "page_number",
+        "gaze_valid_rate",
+        "gaze_left_x_mean",
+        "gaze_left_x_sd",
+        "gaze_left_y_mean",
+        "gaze_left_y_sd",
+        "gaze_left_pupil_mean",
+        "gaze_left_pupil_sd",
+        "gaze_right_x_mean",
+        "gaze_right_x_sd",
+        "gaze_right_y_mean",
+        "gaze_right_y_sd",
+        "gaze_right_pupil_mean",
+        "gaze_right_pupil_sd"
+      ],
+      "excluded_features": [],
+      "modality_policy": "best_available",
+      "seed": 7,
+      "model_version": "p4-baselines/1.0.0",
+      "analysis_version": "p4-analytics/1.0.0",
+      "library_versions": {
+        "python": "3.11.9",
+        "implementation": "Python standard library"
+      },
+      "feature_set_versions": [
+        "neuma-page-exposure/1.0.0"
+      ],
+      "validation_strategy": "participant_group_holdout",
+      "train_group_n": 33,
+      "test_group_n": 8,
+      "test_cohort_fingerprint": "ca727512162f710e3ef799bd91d76449551dac0f6d1c82af82f2e1830e461875",
+      "train_n": 252,
+      "test_n": 84,
+      "input_record_n": 374,
+      "target_missing_n": 0,
+      "feature_availability": {
+        "page_number": {
+          "modality": "non_gaze",
+          "available_record_n": 374,
+          "missing_record_n": 0,
+          "availability_rate": 1.0
+        },
+        "gaze_valid_rate": {
+          "modality": "gaze",
+          "available_record_n": 374,
+          "missing_record_n": 0,
+          "availability_rate": 1.0
+        },
+        "gaze_left_x_mean": {
+          "modality": "gaze",
+          "available_record_n": 369,
+          "missing_record_n": 5,
+          "availability_rate": 0.9866310160427807
+        },
+        "gaze_left_x_sd": {
+          "modality": "gaze",
+          "available_record_n": 369,
+          "missing_record_n": 5,
+          "availability_rate": 0.9866310160427807
+        },
+        "gaze_left_y_mean": {
+          "modality": "gaze",
+          "available_record_n": 369,
+          "missing_record_n": 5,
+          "availability_rate": 0.9866310160427807
+        },
+        "gaze_left_y_sd": {
+          "modality": "gaze",
+          "available_record_n": 369,
+          "missing_record_n": 5,
+          "availability_rate": 0.9866310160427807
+        },
+        "gaze_left_pupil_mean": {
+          "modality": "gaze",
+          "available_record_n": 369,
+          "missing_record_n": 5,
+          "availability_rate": 0.9866310160427807
+        },
+        "gaze_left_pupil_sd": {
+          "modality": "gaze",
+          "available_record_n": 369,
+          "missing_record_n": 5,
+          "availability_rate": 0.9866310160427807
+        },
+        "gaze_right_x_mean": {
+          "modality": "gaze",
+          "available_record_n": 353,
+          "missing_record_n": 21,
+          "availability_rate": 0.9438502673796791
+        },
+        "gaze_right_x_sd": {
+          "modality": "gaze",
+          "available_record_n": 353,
+          "missing_record_n": 21,
+          "availability_rate": 0.9438502673796791
+        },
+        "gaze_right_y_mean": {
+          "modality": "gaze",
+          "available_record_n": 353,
+          "missing_record_n": 21,
+          "availability_rate": 0.9438502673796791
+        },
+        "gaze_right_y_sd": {
+          "modality": "gaze",
+          "available_record_n": 353,
+          "missing_record_n": 21,
+          "availability_rate": 0.9438502673796791
+        },
+        "gaze_right_pupil_mean": {
+          "modality": "gaze",
+          "available_record_n": 353,
+          "missing_record_n": 21,
+          "availability_rate": 0.9438502673796791
+        },
+        "gaze_right_pupil_sd": {
+          "modality": "gaze",
+          "available_record_n": 353,
+          "missing_record_n": 21,
+          "availability_rate": 0.9438502673796791
+        }
+      },
+      "imputed_missing_by_feature": {
+        "train": {
+          "page_number": 0,
+          "gaze_valid_rate": 0,
+          "gaze_left_x_mean": 0,
+          "gaze_left_x_sd": 0,
+          "gaze_left_y_mean": 0,
+          "gaze_left_y_sd": 0,
+          "gaze_left_pupil_mean": 0,
+          "gaze_left_pupil_sd": 0,
+          "gaze_right_x_mean": 0,
+          "gaze_right_x_sd": 0,
+          "gaze_right_y_mean": 0,
+          "gaze_right_y_sd": 0,
+          "gaze_right_pupil_mean": 0,
+          "gaze_right_pupil_sd": 0
+        },
+        "test": {
+          "page_number": 0,
+          "gaze_valid_rate": 0,
+          "gaze_left_x_mean": 0,
+          "gaze_left_x_sd": 0,
+          "gaze_left_y_mean": 0,
+          "gaze_left_y_sd": 0,
+          "gaze_left_pupil_mean": 0,
+          "gaze_left_pupil_sd": 0,
+          "gaze_right_x_mean": 0,
+          "gaze_right_x_sd": 0,
+          "gaze_right_y_mean": 0,
+          "gaze_right_y_sd": 0,
+          "gaze_right_pupil_mean": 0,
+          "gaze_right_pupil_sd": 0
+        }
+      },
+      "preprocessing": "training-only median imputation and standardization; missing or low-quality required gaze values are excluded, never imputed",
+      "normalization": {
+        "mean": {
+          "page_number": 3.1944444444444446,
+          "gaze_valid_rate": 0.9603720238095238,
+          "gaze_left_x_mean": 0.36689499874431913,
+          "gaze_left_x_sd": 0.12725599128152812,
+          "gaze_left_y_mean": 0.34541156956873725,
+          "gaze_left_y_sd": 0.11518263709286719,
+          "gaze_left_pupil_mean": 2.833235263576194,
+          "gaze_left_pupil_sd": 0.07740469546199268,
+          "gaze_right_x_mean": 0.3531778010273869,
+          "gaze_right_x_sd": 0.12927763924975014,
+          "gaze_right_y_mean": 0.3402930866203265,
+          "gaze_right_y_sd": 0.11835741363098194,
+          "gaze_right_pupil_mean": 2.9100717379650143,
+          "gaze_right_pupil_sd": 0.08039310029091888
+        },
+        "sd": {
+          "page_number": 1.741767456750558,
+          "gaze_valid_rate": 0.07629533838817218,
+          "gaze_left_x_mean": 0.1131954759465909,
+          "gaze_left_x_sd": 0.05158618149281473,
+          "gaze_left_y_mean": 0.12849175089732282,
+          "gaze_left_y_sd": 0.06307140492395896,
+          "gaze_left_pupil_mean": 0.28986550361720415,
+          "gaze_left_pupil_sd": 0.03913725991935147,
+          "gaze_right_x_mean": 0.11534992905482803,
+          "gaze_right_x_sd": 0.05151553947012789,
+          "gaze_right_y_mean": 0.12174885379102306,
+          "gaze_right_y_sd": 0.06508218355102587,
+          "gaze_right_pupil_mean": 0.30827711588692336,
+          "gaze_right_pupil_sd": 0.039695130764593585
+        },
+        "training_medians": {
+          "page_number": 3.0,
+          "gaze_valid_rate": 1.0,
+          "gaze_left_x_mean": 0.3498877043361988,
+          "gaze_left_x_sd": 0.1221437957049963,
+          "gaze_left_y_mean": 0.312672358037283,
+          "gaze_left_y_sd": 0.10256423934871209,
+          "gaze_left_pupil_mean": 2.8387376668352733,
+          "gaze_left_pupil_sd": 0.06767751121446225,
+          "gaze_right_x_mean": 0.3363635911733194,
+          "gaze_right_x_sd": 0.1261425047203974,
+          "gaze_right_y_mean": 0.31099772634637407,
+          "gaze_right_y_sd": 0.10522933218998687,
+          "gaze_right_pupil_mean": 2.8613902821260337,
+          "gaze_right_pupil_sd": 0.06861580775308174
+        }
+      }
+    },
+    "baseline_comparison": {
+      "baseline": {
+        "model": {
+          "kind": "majority_class_predictor",
+          "class": "1.0"
+        },
+        "metrics": {
+          "accuracy": 0.6547619047619048,
+          "macro_f1": 0.3956834532374101,
+          "balanced_accuracy": 0.5,
+          "per_class": {
+            "0.0": {
+              "support": 29,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "1.0": {
+              "support": 55,
+              "precision": 0.6547619047619048,
+              "recall": 1.0,
+              "f1": 0.7913669064748202
+            }
+          },
+          "brier_score": null,
+          "calibration": null
+        },
+        "uncertainty": {
+          "metric": "balanced_accuracy",
+          "level": 0.95,
+          "lower": 0.5,
+          "upper": 0.5,
+          "method": "participant/session cluster bootstrap",
+          "replicates": 800,
+          "test_group_n": 8
+        },
+        "heldout_predictions": [
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "02b1e40f63ddc701",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "bc2d54bbc1743fce",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "85a732d46936b34e",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "2d9fb548ea7218e9",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "fffb8d9ec02eebe7",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "476c189153c6c5a1",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "d163a01c913a3701",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "a3ca5625ec283958",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "25863ffceb84ec5b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "aec327e05bae4ae3",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "29c3eb0e4f39eed1",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "fe785cfc5cefdacb",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "c142dc1ea3426b04",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "c2a1110b12302f06",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "f9d98ba86b806b19",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "47b3eeeae3013923",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "3c310fe28d04139b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "7f56fbfd50f0e73c",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "7956e272087eaada",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "f30f23556020236c",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "99c789829ca66c58",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "04bb5d21923d90f9",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "71bfbfb78193e074",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "c17832bdb915b0c0",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "be2a805e870912e4",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "dd0d905fc2adde7b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "c87b3c0f4ee50aaa",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "669638ce9b0fa971",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "2fc16a3d1dd18c70",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "03e726caf5b31c86",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "d699ddb9787e304a",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "4254dd4106a61fe7",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "12da8c81ac6d05e4",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "f81938897c98abc7",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "4e4d91eb1dda519e",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "bc33143b29c7eb4b",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "cb495c9c73d41bf3",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "44b44d1b4fb9f69d",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "fc9adf05473dc6ef",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "d31b1ae194c3c96f",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "774bf90a4438dbf0",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "02148087342442b7",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "e2c94f3e28f22a3c",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "0d2e046db8b08c6b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "ac9b1510866bf24c",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "7faf12c3a6501ae5",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "8cd1557c0c4f328e",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "556c54aa73d3cff7",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "07d0d1b5a247e721",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "a63024062ba34195",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "69fb6e118347668b",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "1d5a174538743489",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "5648941f8e145322",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "5359588d11dad26d",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "86136d8da24fc0aa",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "eca664e3cc572fee",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "e7d5478cb50706e5",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "053369a38168d17b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "17ad325af1f96caf",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "da62c7935de2a85c",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "f724970d77e71833",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "a3723e77a21d164e",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "dde2ee6e1a02c2d4",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "4b248d10c8fbf0ca",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "550b6683884523da",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "adf5f809dca17a33",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "741c8c49fda03dfd",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "1853168a7a7dadad",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "2e66e57f8e12e77e",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "d3a3be99cc1e816e",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "3215ca355e9ce7f8",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "d83fb16fd1e0db53",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "b00d22d0303c704f",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "0989a2e611926e07",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "5a75ed9037a149c0",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "e3c51b3c7f0b7098",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "64b29ccc5febfb71",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "f011e20983072185",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "053d7893cca81187",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "cfb201a02e04009e",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "86f9a7223a3ffaf8",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "444738f3eddd3667",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "e2dc75294768f935",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "1d7febc9888cba41",
+            "observed": "1.0",
+            "predicted": "1.0"
+          }
+        ]
+      },
+      "logistic": {
+        "model": {
+          "kind": "logistic_regression",
+          "alpha": 1.0,
+          "classes": [
+            "0.0",
+            "1.0"
+          ],
+          "coefficients": [
+            [
+              -0.3467767340281591,
+              -0.16841074283284624,
+              0.08199689817031061,
+              0.29820989348020294,
+              0.0557358988790123,
+              0.1394060333408799,
+              -0.14034127576329972,
+              0.029674500141838485,
+              -0.05412024830388098,
+              -0.04587233963604969,
+              0.3890089402713824,
+              -0.19151270399902573,
+              0.08533798383494241,
+              -0.1140001123076557
+            ],
+            [
+              0.34677673402815906,
+              0.16841074283284624,
+              -0.08199689817031053,
+              -0.2982098934802029,
+              -0.05573589887901228,
+              -0.13940603334087995,
+              0.14034127576329974,
+              -0.02967450014183844,
+              0.05412024830388101,
+              0.045872339636049586,
+              -0.3890089402713826,
+              0.19151270399902579,
+              -0.08533798383494239,
+              0.11400011230765578
+            ]
+          ],
+          "intercepts": [
+            -0.5047638550473714,
+            0.5047638550473716
+          ],
+          "iterations": 600
+        },
+        "metrics": {
+          "accuracy": 0.7142857142857143,
+          "macro_f1": 0.60625,
+          "balanced_accuracy": 0.6106583072100313,
+          "per_class": {
+            "0.0": {
+              "support": 29,
+              "precision": 0.7272727272727273,
+              "recall": 0.27586206896551724,
+              "f1": 0.4
+            },
+            "1.0": {
+              "support": 55,
+              "precision": 0.7123287671232876,
+              "recall": 0.9454545454545454,
+              "f1": 0.8124999999999999
+            }
+          },
+          "brier_score": 0.2244759268137316,
+          "calibration": {
+            "method": "10 equal-width bins",
+            "positive_class": "1.0",
+            "expected_calibration_error": 0.14728608953813882,
+            "maximum_calibration_error": 0.4468976180709059,
+            "bins": [
+              {
+                "lower": 0.0,
+                "upper": 0.1,
+                "n": 2,
+                "mean_predicted_probability": 0.05310238192909412,
+                "observed_positive_rate": 0.5
+              },
+              {
+                "lower": 0.2,
+                "upper": 0.3,
+                "n": 2,
+                "mean_predicted_probability": 0.28009101210377324,
+                "observed_positive_rate": 0.5
+              },
+              {
+                "lower": 0.3,
+                "upper": 0.4,
+                "n": 3,
+                "mean_predicted_probability": 0.3340721284597102,
+                "observed_positive_rate": 0.3333333333333333
+              },
+              {
+                "lower": 0.4,
+                "upper": 0.5,
+                "n": 4,
+                "mean_predicted_probability": 0.43856989711821504,
+                "observed_positive_rate": 0.0
+              },
+              {
+                "lower": 0.5,
+                "upper": 0.6,
+                "n": 7,
+                "mean_predicted_probability": 0.5673498366762986,
+                "observed_positive_rate": 0.7142857142857143
+              },
+              {
+                "lower": 0.6,
+                "upper": 0.7,
+                "n": 9,
+                "mean_predicted_probability": 0.6565117266286191,
+                "observed_positive_rate": 0.6666666666666666
+              },
+              {
+                "lower": 0.7,
+                "upper": 0.8,
+                "n": 11,
+                "mean_predicted_probability": 0.7445789765185163,
+                "observed_positive_rate": 0.7272727272727273
+              },
+              {
+                "lower": 0.8,
+                "upper": 0.9,
+                "n": 25,
+                "mean_predicted_probability": 0.8475579773355532,
+                "observed_positive_rate": 0.68
+              },
+              {
+                "lower": 0.9,
+                "upper": 1.0,
+                "n": 21,
+                "mean_predicted_probability": 0.9420313598436456,
+                "observed_positive_rate": 0.7619047619047619
+              }
+            ],
+            "caveat": "Exploratory calibration estimates; small held-out samples can make bins unstable."
+          }
+        },
+        "uncertainty": {
+          "metric": "balanced_accuracy",
+          "level": 0.95,
+          "lower": 0.5400432900432901,
+          "upper": 0.725,
+          "method": "participant/session cluster bootstrap",
+          "replicates": 800,
+          "test_group_n": 8
+        },
+        "feature_weights": {
+          "page_number": 0.3467767340281591,
+          "gaze_valid_rate": 0.16841074283284624,
+          "gaze_left_x_mean": 0.08199689817031057,
+          "gaze_left_x_sd": 0.2982098934802029,
+          "gaze_left_y_mean": 0.055735898879012286,
+          "gaze_left_y_sd": 0.13940603334087992,
+          "gaze_left_pupil_mean": 0.14034127576329974,
+          "gaze_left_pupil_sd": 0.029674500141838464,
+          "gaze_right_x_mean": 0.054120248303881,
+          "gaze_right_x_sd": 0.04587233963604964,
+          "gaze_right_y_mean": 0.3890089402713825,
+          "gaze_right_y_sd": 0.19151270399902576,
+          "gaze_right_pupil_mean": 0.0853379838349424,
+          "gaze_right_pupil_sd": 0.11400011230765573
+        },
+        "explanation_label": "Associational model weights, not causal effects",
+        "heldout_predictions": [
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "02b1e40f63ddc701",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "bc2d54bbc1743fce",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "85a732d46936b34e",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "2d9fb548ea7218e9",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "fffb8d9ec02eebe7",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "476c189153c6c5a1",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "d163a01c913a3701",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "a3ca5625ec283958",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "25863ffceb84ec5b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "aec327e05bae4ae3",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "29c3eb0e4f39eed1",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "fe785cfc5cefdacb",
+            "observed": "1.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "c142dc1ea3426b04",
+            "observed": "0.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "c2a1110b12302f06",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "33829b0e034a02f2",
+            "record_token": "f9d98ba86b806b19",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "47b3eeeae3013923",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "3c310fe28d04139b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "7f56fbfd50f0e73c",
+            "observed": "0.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "7956e272087eaada",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "f30f23556020236c",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "99c789829ca66c58",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "04bb5d21923d90f9",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "ec546f04a3d6c011",
+            "record_token": "71bfbfb78193e074",
+            "observed": "0.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "c17832bdb915b0c0",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "be2a805e870912e4",
+            "observed": "0.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "dd0d905fc2adde7b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "c87b3c0f4ee50aaa",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "669638ce9b0fa971",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "2fc16a3d1dd18c70",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "03e726caf5b31c86",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "d699ddb9787e304a",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "4254dd4106a61fe7",
+            "observed": "0.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "12da8c81ac6d05e4",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "f81938897c98abc7",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "4e4d91eb1dda519e",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d625318b6fb0a410",
+            "record_token": "bc33143b29c7eb4b",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "cb495c9c73d41bf3",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "44b44d1b4fb9f69d",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "fc9adf05473dc6ef",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "d31b1ae194c3c96f",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "774bf90a4438dbf0",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "02148087342442b7",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "e2c94f3e28f22a3c",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "0d2e046db8b08c6b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "ac9b1510866bf24c",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "7faf12c3a6501ae5",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "8cd1557c0c4f328e",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "556c54aa73d3cff7",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "07d0d1b5a247e721",
+            "observed": "0.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "a63024062ba34195",
+            "observed": "1.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "69fb6e118347668b",
+            "observed": "0.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "1d5a174538743489",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "5648941f8e145322",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "5359588d11dad26d",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "d87f96c3835db619",
+            "record_token": "86136d8da24fc0aa",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "eca664e3cc572fee",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "e7d5478cb50706e5",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "053369a38168d17b",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "17ad325af1f96caf",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "da62c7935de2a85c",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "f724970d77e71833",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "7e830ff5e5fac9a7",
+            "record_token": "a3723e77a21d164e",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "dde2ee6e1a02c2d4",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "4b248d10c8fbf0ca",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "550b6683884523da",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "adf5f809dca17a33",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "741c8c49fda03dfd",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "1853168a7a7dadad",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "a0e6cd01fb2fdc37",
+            "record_token": "2e66e57f8e12e77e",
+            "observed": "0.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "d3a3be99cc1e816e",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "3215ca355e9ce7f8",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "d83fb16fd1e0db53",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "b00d22d0303c704f",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "0989a2e611926e07",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "5a75ed9037a149c0",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "96cd909fe39d669c",
+            "record_token": "e3c51b3c7f0b7098",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "64b29ccc5febfb71",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "f011e20983072185",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "053d7893cca81187",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "cfb201a02e04009e",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "86f9a7223a3ffaf8",
+            "observed": "0.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "444738f3eddd3667",
+            "observed": "1.0",
+            "predicted": "1.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "e2dc75294768f935",
+            "observed": "1.0",
+            "predicted": "0.0"
+          },
+          {
+            "unit_token": "e128ca75a4338960",
+            "record_token": "1d7febc9888cba41",
+            "observed": "1.0",
+            "predicted": "1.0"
+          }
+        ]
+      }
+    },
+    "dropped_gaze_missing_n": 38,
+    "dropped_gaze_low_quality_n": 38,
+    "gaze_quality_unavailable_value_n": 0,
+    "warnings": [
+      "Held-out evaluation only; no performance claim is justified by synthetic fixtures.",
+      "Weights and predictive associations do not establish causality."
+    ],
+    "grouped_cross_validation": {
+      "status": "succeeded",
+      "method": "grouped cross-validation",
+      "folds": [
+        {
+          "fold": 1,
+          "status": "succeeded",
+          "test_group_n": 9,
+          "models": {
+            "baseline": {
+              "metric": "balanced_accuracy",
+              "value": 0.5
+            },
+            "logistic": {
+              "metric": "balanced_accuracy",
+              "value": 0.512280701754386
+            }
+          }
+        },
+        {
+          "fold": 2,
+          "status": "succeeded",
+          "test_group_n": 8,
+          "models": {
+            "baseline": {
+              "metric": "balanced_accuracy",
+              "value": 0.5
+            },
+            "logistic": {
+              "metric": "balanced_accuracy",
+              "value": 0.6501877346683353
+            }
+          }
+        },
+        {
+          "fold": 3,
+          "status": "succeeded",
+          "test_group_n": 8,
+          "models": {
+            "baseline": {
+              "metric": "balanced_accuracy",
+              "value": 0.5
+            },
+            "logistic": {
+              "metric": "balanced_accuracy",
+              "value": 0.5848694316436251
+            }
+          }
+        },
+        {
+          "fold": 4,
+          "status": "succeeded",
+          "test_group_n": 8,
+          "models": {
+            "baseline": {
+              "metric": "balanced_accuracy",
+              "value": 0.5
+            },
+            "logistic": {
+              "metric": "balanced_accuracy",
+              "value": 0.6217948717948718
+            }
+          }
+        },
+        {
+          "fold": 5,
+          "status": "succeeded",
+          "test_group_n": 8,
+          "models": {
+            "baseline": {
+              "metric": "balanced_accuracy",
+              "value": 0.5
+            },
+            "logistic": {
+              "metric": "balanced_accuracy",
+              "value": 0.7333333333333334
+            }
+          }
+        }
+      ],
+      "fold_count": 5,
+      "seed": 7,
+      "warning": "Outer fold groups are held out; preprocessing is fit on each fold training set. Hyperparameter selection requires nested validation for unbiased estimates."
+    },
+    "neuma": {
+      "schema_version": "neuma-page-exposure/1.0.0",
+      "prediction_unit": "participant x page exposure",
+      "product_level_target_supported": false
+    }
+  }
+}
